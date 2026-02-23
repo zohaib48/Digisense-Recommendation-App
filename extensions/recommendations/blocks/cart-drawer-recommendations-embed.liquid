@@ -1,0 +1,292 @@
+{% comment %}
+  Cart Drawer Recommendations (App Embed)
+  Mounts inside drawer carts and refreshes on cart updates.
+{% endcomment %}
+
+<script>
+  (function () {
+    const DIRECT_APP_BASE = {{ shop.metafields.recommendations_app.api_url.value | json }};
+    const APP_PROXY_BASE = '/apps/recommendations';
+    const WIDGET_ID = 'drawer-recommendations-{{ block.id }}';
+    const HEADING = {{ block.settings.heading | json }};
+    const EMPTY_MESSAGE = {{ block.settings.empty_message | json }};
+    const MAX_ITEMS = {{ block.settings.max_items | json }};
+
+    function buildRecommendationsUrl(path) {
+      if (DIRECT_APP_BASE) {
+        const base = String(DIRECT_APP_BASE).replace(/\/$/, '');
+        return `${base}/api/recommendations${path}`;
+      }
+      return `${APP_PROXY_BASE}${path}`;
+    }
+
+    function findDrawerMountPoint() {
+      const drawerSummary = document.querySelector('cart-drawer-component .cart-drawer__summary');
+      if (drawerSummary) return drawerSummary;
+
+      const drawerContent = document.querySelector('cart-drawer-component .cart-drawer__content');
+      if (drawerContent) return drawerContent;
+
+      return null;
+    }
+
+    function isElement(node) {
+      return !!node && node.nodeType === 1;
+    }
+
+    function isInsideWidget(node) {
+      if (!isElement(node)) return false;
+      return !!node.closest(`#${WIDGET_ID}`);
+    }
+
+    function getWidgetParts(widget) {
+      if (!widget || !widget.isConnected) return null;
+      const loading = widget.querySelector('.drawer-recommendations__loading');
+      const list = widget.querySelector('.drawer-recommendations__list');
+      const empty = widget.querySelector('.drawer-recommendations__empty');
+      if (!loading || !list || !empty) return null;
+      return { loading, list, empty };
+    }
+
+    function ensureWidgetMounted() {
+      const mountPoint = findDrawerMountPoint();
+      if (!mountPoint) return null;
+
+      let widget = document.getElementById(WIDGET_ID);
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.id = WIDGET_ID;
+        widget.className = 'drawer-recommendations';
+        widget.innerHTML = `
+          <div class="drawer-recommendations__header">
+            <h3 class="drawer-recommendations__title">${HEADING || 'You may also like'}</h3>
+          </div>
+          <div class="drawer-recommendations__loading">Loading recommendations...</div>
+          <div class="drawer-recommendations__list" hidden></div>
+          <div class="drawer-recommendations__empty" hidden>${EMPTY_MESSAGE || 'No recommendations found'}</div>
+        `;
+
+        const cartCtas = mountPoint.querySelector('.cart__ctas');
+        if (cartCtas && cartCtas.parentNode) {
+          cartCtas.parentNode.insertBefore(widget, cartCtas);
+        } else {
+          mountPoint.appendChild(widget);
+        }
+      }
+
+      if (!document.getElementById(`${WIDGET_ID}-style`)) {
+        const style = document.createElement('style');
+        style.id = `${WIDGET_ID}-style`;
+        style.textContent = `
+          .drawer-recommendations { border-top: 1px solid rgba(0,0,0,0.08); margin-top: 12px; padding-top: 12px; }
+          .drawer-recommendations__title { font-size: 14px; margin: 0 0 8px; }
+          .drawer-recommendations__loading,
+          .drawer-recommendations__empty { font-size: 12px; color: #666; padding: 8px 0; }
+          .drawer-recommendations__list { display: grid; gap: 8px; }
+          .drawer-recommendations__item { display: grid; grid-template-columns: 48px 1fr; gap: 8px; align-items: center; text-decoration: none; color: inherit; }
+          .drawer-recommendations__item img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; background: #f5f5f5; }
+          .drawer-recommendations__item-title { font-size: 12px; line-height: 1.2; margin: 0 0 2px; }
+          .drawer-recommendations__item-price { font-size: 12px; font-weight: 600; margin: 0; }
+        `;
+        document.head.appendChild(style);
+      }
+
+      return widget;
+    }
+
+    async function fetchDrawerRecommendations() {
+      const cartResponse = await fetch('/cart.js');
+      const cart = await cartResponse.json();
+
+      if (!cart.items || cart.items.length === 0) {
+        return [];
+      }
+
+      const items = cart.items.map((item) => ({
+        variant_id: item.variant_id,
+        product_id: item.product_id,
+        variant_title: item.variant_title,
+        price: item.price / 100,
+        properties: item.properties || {}
+      }));
+
+      const url = buildRecommendationsUrl(`/cart?items=${encodeURIComponent(JSON.stringify(items))}`);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Failed drawer recommendations (${response.status}) ${errorBody}`);
+      }
+
+      const data = await response.json();
+      const recommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
+
+      return recommendations.slice(0, Number(MAX_ITEMS) || 3);
+    }
+
+    function renderDrawerRecommendations(widget, recommendations) {
+      const parts = getWidgetParts(widget);
+      if (!parts) return;
+      const { loading, list, empty } = parts;
+
+      loading.hidden = true;
+
+      if (!recommendations || recommendations.length === 0) {
+        list.hidden = true;
+        empty.hidden = false;
+        return;
+      }
+
+      empty.hidden = true;
+      list.hidden = false;
+      list.innerHTML = recommendations.map((product) => {
+        const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
+        return `
+          <a class="drawer-recommendations__item" href="/products/${product.handle}">
+            ${imageUrl ? `<img src="${imageUrl}" alt="${product.title}" loading="lazy">` : '<div></div>'}
+            <div>
+              <p class="drawer-recommendations__item-title">${product.title}</p>
+              <p class="drawer-recommendations__item-price">$${Number(product.priceRange?.min || 0).toFixed(2)}</p>
+            </div>
+          </a>
+        `;
+      }).join('');
+    }
+
+    let refreshTimer = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+
+    function scheduleRefresh(delayMs) {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshDrawerRecommendations, delayMs);
+    }
+
+    async function refreshDrawerRecommendations() {
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      const widget = ensureWidgetMounted();
+      if (!widget) {
+        refreshInFlight = false;
+        return;
+      }
+
+      const parts = getWidgetParts(widget);
+      if (!parts) {
+        refreshInFlight = false;
+        return;
+      }
+      const { loading, list, empty } = parts;
+
+      loading.hidden = false;
+      list.hidden = true;
+      empty.hidden = true;
+
+      try {
+        const recommendations = await fetchDrawerRecommendations();
+        renderDrawerRecommendations(widget, recommendations);
+      } catch (error) {
+        console.error('[Drawer Recommendations]', error);
+        const latestParts = getWidgetParts(widget);
+        if (latestParts) {
+          latestParts.loading.hidden = true;
+          latestParts.list.hidden = true;
+          latestParts.empty.hidden = false;
+        }
+      } finally {
+        refreshInFlight = false;
+        if (refreshQueued) {
+          refreshQueued = false;
+          scheduleRefresh(120);
+        }
+      }
+    }
+
+    function watchDrawerOpenState() {
+      const observer = new MutationObserver((mutations) => {
+        let shouldRefresh = false;
+
+        for (const mutation of mutations) {
+          const target = mutation.target;
+
+          if (isInsideWidget(target)) {
+            continue;
+          }
+
+          if (mutation.type === 'attributes') {
+            if (isElement(target) && target.closest('cart-drawer-component')) {
+              shouldRefresh = true;
+              break;
+            }
+            continue;
+          }
+
+          if (mutation.type === 'childList') {
+            const inDrawerTree = isElement(target) && target.closest('cart-drawer-component');
+            if (!inDrawerTree) {
+              continue;
+            }
+
+            const addedInWidget = Array.from(mutation.addedNodes || []).some((node) => isInsideWidget(node));
+            if (addedInWidget) {
+              continue;
+            }
+
+            shouldRefresh = true;
+            break;
+          }
+        }
+
+        if (shouldRefresh) {
+          scheduleRefresh(120);
+        }
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['open']
+      });
+    }
+
+    document.addEventListener('cart:updated', () => scheduleRefresh(80));
+    document.addEventListener('DOMContentLoaded', () => scheduleRefresh(150));
+    watchDrawerOpenState();
+    scheduleRefresh(250);
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Drawer Recommendations",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "You may also like"
+    },
+    {
+      "type": "range",
+      "id": "max_items",
+      "label": "Max items",
+      "min": 1,
+      "max": 6,
+      "step": 1,
+      "default": 3
+    },
+    {
+      "type": "text",
+      "id": "empty_message",
+      "label": "Empty message",
+      "default": "No recommendations found"
+    }
+  ]
+}
+{% endschema %}

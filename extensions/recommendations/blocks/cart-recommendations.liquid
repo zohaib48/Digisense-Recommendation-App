@@ -1,0 +1,395 @@
+{% comment %}
+  Cart Recommendations
+  Shows similar products based on items in cart
+{% endcomment %}
+
+<div class="cart-recommendations" id="cart-recommendations-{{ section.id }}">
+  <div class="cart-recommendations__header">
+    <h2 class="cart-recommendations__title">{{ section.settings.heading }}</h2>
+    <p class="cart-recommendations__subtitle">{{ section.settings.subtitle }}</p>
+  </div>
+
+  <div class="cart-recommendations__loading" id="cart-recommendations-loading">
+    <div class="cart-recommendations__grid">
+      {% for i in (1..4) %}
+        <div class="cart-recommendation-card skeleton-card">
+          <div class="skeleton-image"></div>
+          <div class="skeleton-badge"></div>
+          <div class="skeleton-title"></div>
+          <div class="skeleton-price"></div>
+          <div class="skeleton-reason"></div>
+          <div class="skeleton-button"></div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="cart-recommendations__container" id="cart-recommendations-container" style="display: none;">
+    <div class="cart-recommendations__grid" id="cart-recommendations-grid">
+      <!-- Recommendations will be inserted here -->
+    </div>
+  </div>
+
+  <div class="cart-recommendations__empty" id="cart-recommendations-empty" style="display: none;">
+    <p>{{ section.settings.empty_message }}</p>
+  </div>
+</div>
+
+<style>
+  .cart-recommendations {
+    margin: 3rem 0;
+    padding: 2rem;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+  }
+
+  .cart-recommendations__header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .cart-recommendations__title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .cart-recommendations__subtitle {
+    color: #666;
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  .cart-recommendations__loading {
+    /* no extra padding or centering – let the inner grid control layout */
+  }
+
+  /* Skeleton Loader Styles */
+  .cart-recommendations__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.5rem;
+    text-align: left;
+  }
+
+  .skeleton-card {
+    border: 1px solid #f0f0f0;
+    pointer-events: none;
+  }
+
+  .skeleton-image,
+  .skeleton-badge,
+  .skeleton-title,
+  .skeleton-price,
+  .skeleton-reason,
+  .skeleton-button {
+    background: #eee;
+    background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
+    background-size: 200% 100%;
+    animation: 1.5s pulse linear infinite;
+    border-radius: 4px;
+  }
+
+  .skeleton-image {
+    width: 100%;
+    aspect-ratio: 1;
+    margin-bottom: 1rem;
+  }
+
+  .skeleton-badge {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    height: 24px;
+    width: 100px;
+    border-radius: 12px;
+    z-index: 1;
+  }
+
+  .skeleton-title {
+    height: 20px;
+    width: 80%;
+    margin-bottom: 0.5rem;
+  }
+
+  .skeleton-price {
+    height: 24px;
+    width: 60%;
+    margin-bottom: 0.5rem;
+  }
+
+  .skeleton-reason {
+    height: 16px;
+    width: 90%;
+    margin-bottom: 1rem;
+    flex: 1;
+  }
+
+  .skeleton-button {
+    height: 40px;
+    width: 100%;
+    border-radius: 4px;
+  }
+
+  @keyframes pulse {
+    to {
+      background-position-x: -200%;
+    }
+  }
+
+  .cart-recommendations__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .cart-recommendation-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .cart-recommendation-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .cart-recommendation-card__badge {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background-color: #1976d2;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    z-index: 1;
+  }
+
+  .cart-recommendation-card__image {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+  }
+
+  .cart-recommendation-card__content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cart-recommendation-card__title {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+  }
+
+  .cart-recommendation-card__price {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 0.5rem;
+  }
+
+  .cart-recommendation-card__reason {
+    font-size: 0.875rem;
+    color: #666;
+    margin-bottom: 1rem;
+    flex: 1;
+  }
+
+  .cart-recommendation-card__add-to-cart {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: #000;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+  }
+
+  .cart-recommendation-card__add-to-cart:hover {
+    background-color: #333;
+    color: white;
+  }
+
+  .cart-recommendations__empty {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+  }
+
+  @media (max-width: 768px) {
+    .cart-recommendations__grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
+
+<script>
+  (function () {
+    const DIRECT_APP_BASE = {{ shop.metafields.recommendations_app.api_url.value | json }};
+    const APP_PROXY_BASE = '/apps/recommendations';
+
+    function buildRecommendationsUrl(path) {
+      if (DIRECT_APP_BASE) {
+        const base = String(DIRECT_APP_BASE).replace(/\/$/, '');
+        return `${base}/api/recommendations${path}`;
+      }
+      return `${APP_PROXY_BASE}${path}`;
+    }
+
+    async function loadCartRecommendations() {
+      try {
+        // Get cart data
+        const cartResponse = await fetch('/cart.js');
+        const cart = await cartResponse.json();
+
+        if (!cart.items || cart.items.length === 0) {
+          document.getElementById('cart-recommendations-loading').style.display = 'none';
+          document.getElementById('cart-recommendations-empty').style.display = 'block';
+          return;
+        }
+
+        // Prepare cart items data
+        const items = cart.items.map((item) => ({
+          variant_id: item.variant_id,
+          product_id: item.product_id,
+          variant_title: item.variant_title,
+          price: item.price / 100,
+          properties: item.properties || {},
+        }));
+
+        const requestUrl = buildRecommendationsUrl(`/cart?items=${encodeURIComponent(JSON.stringify(items))}`);
+        const response = await fetch(requestUrl);
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error('Cart recommendations request failed', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorBody
+          });
+          throw new Error(`Failed to fetch cart recommendations (${response.status})`);
+        }
+
+        const data = await response.json();
+        displayCartRecommendations(data.recommendations);
+      } catch (error) {
+        console.error('Cart recommendations error:', error);
+        document.getElementById('cart-recommendations-loading').style.display = 'none';
+        document.getElementById('cart-recommendations-empty').style.display = 'block';
+      }
+    }
+
+    function displayCartRecommendations(recommendations) {
+      const loading = document.getElementById('cart-recommendations-loading');
+      const container = document.getElementById('cart-recommendations-container');
+      const grid = document.getElementById('cart-recommendations-grid');
+      const empty = document.getElementById('cart-recommendations-empty');
+
+      loading.style.display = 'none';
+
+      if (!recommendations || recommendations.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+
+      container.style.display = 'block';
+
+      grid.innerHTML = recommendations
+        .map((product) => {
+          const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
+          const matchQuality =
+            product.relevanceScore >= 80
+              ? 'Perfect Match'
+              : product.relevanceScore >= 60
+              ? 'Great Match'
+              : 'Good Match';
+
+          // Get first available variant for add to cart
+          const firstVariant =
+            product.matchingVariants && product.matchingVariants[0] ? product.matchingVariants[0] : product.variants[0];
+
+          return `
+        <div class="cart-recommendation-card">
+          <span class="cart-recommendation-card__badge">${matchQuality}</span>
+          <a href="/products/${product.handle}">
+            ${
+              imageUrl
+                ? `<img src="${imageUrl}" alt="${product.title}" class="cart-recommendation-card__image" loading="lazy">`
+                : ''
+            }
+          </a>
+          <div class="cart-recommendation-card__content">
+            <a href="/products/${product.handle}" style="text-decoration: none; color: inherit;">
+              <h3 class="cart-recommendation-card__title">${product.title}</h3>
+            </a>
+            <div class="cart-recommendation-card__price">
+              $${product.priceRange.min.toFixed(2)}
+              ${product.priceRange.min !== product.priceRange.max ? ` - $${product.priceRange.max.toFixed(2)}` : ''}
+            </div>
+            ${product.reason ? `<p class="cart-recommendation-card__reason">${product.reason}</p>` : ''}
+            <a href="/products/${product.handle}" class="cart-recommendation-card__add-to-cart">
+              View Product
+            </a>
+          </div>
+        </div>
+      `;
+        })
+        .join('');
+    }
+
+    // Load recommendations on page load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadCartRecommendations);
+    } else {
+      loadCartRecommendations();
+    }
+
+    // Refresh recommendations when cart is updated
+    document.addEventListener('cart:updated', loadCartRecommendations);
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Cart Recommendations",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Complete Your Look"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Subtitle",
+      "default": "Based on items in your cart"
+    },
+    {
+      "type": "text",
+      "id": "empty_message",
+      "label": "Empty Message",
+      "default": "Add items to your cart to see recommendations"
+    }
+  ]
+}
+{% endschema %}

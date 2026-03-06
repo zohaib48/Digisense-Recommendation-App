@@ -222,7 +222,7 @@ router.get('/product/:productId', async (req, res) => {
     console.log(`📥 Recommendations Request: ${productId} | size: ${size} | price: ${price}`);
 
     // Resolve shop from session (we still need the session to know which shop we're serving)
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       console.log(`❌ Request blocked: invalid session (${validation.reason})`);
       return sendSessionError(req, res, validation);
@@ -313,18 +313,14 @@ router.get('/product/:productId', async (req, res) => {
   } catch (error) {
     console.error('CRITICAL Recommendation Error:', error);
 
-    try {
-      import('fs').then(fs => {
-        fs.promises.appendFile('API_CRASH.log', `[${new Date().toISOString()}] ${error.message}\n${error.stack}\n\n`);
-      });
-    } catch (e) { }
-
     const statusCode = resolveErrorStatus(error);
-    let errorMessage = error.message || 'An unexpected error occurred';
+    let errorMessage = 'An unexpected error occurred';
     if (statusCode === 401) {
       errorMessage = 'Session expired or unauthorized. Open the app in Shopify Admin to re-authenticate.';
     } else if (statusCode === 403) {
       errorMessage = 'Access denied by Shopify API. Re-authenticate the app to refresh scopes.';
+    } else if (process.env.NODE_ENV === 'development') {
+      errorMessage = error.message || errorMessage;
     }
 
     if (isAppProxyRequest(req)) {
@@ -338,10 +334,9 @@ router.get('/product/:productId', async (req, res) => {
     res.status(statusCode).json({
       error: true,
       message: errorMessage,
-      details: error.response?.body || null,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
+
 });
 
 /**
@@ -365,7 +360,7 @@ router.get('/cart', async (req, res) => {
       });
     }
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(req, res, validation);
     }
@@ -423,7 +418,7 @@ router.post('/cart', async (req, res) => {
       return res.json({ recommendations: cached.recommendations, cached: true, cartItemsProcessed: cached.cartItemsProcessed });
     }
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(req, res, validation);
     }
@@ -481,7 +476,7 @@ router.get('/similar/:productId', async (req, res) => {
     const { productId } = req.params;
     const { limit = 6 } = req.query;
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(req, res, validation);
     }

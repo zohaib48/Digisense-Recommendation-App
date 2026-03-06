@@ -16,7 +16,31 @@ import {
   Checkbox,
   Spinner
 } from '@shopify/polaris';
-import { useAuthenticatedFetch } from '@shopify/app-bridge-react';
+
+/**
+ * Custom authenticated fetch hook.
+ * Uses App Bridge CDN's shopify.idToken() to get a session token
+ * and sends it as a Bearer token in the Authorization header.
+ */
+function useAppFetch() {
+  return useCallback(async (url, options = {}) => {
+    const headers = { ...options.headers };
+
+    // Get session token from App Bridge CDN (if available)
+    try {
+      if (window.shopify && typeof window.shopify.idToken === 'function') {
+        const token = await window.shopify.idToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get App Bridge session token:', e.message);
+    }
+
+    return fetch(url, { ...options, headers });
+  }, []);
+}
 
 const VALID_SIZE_MATCH_STYLES = new Set(['exact', 'exact_or_similar', 'none']);
 const DEFAULT_MAX_RECOMMENDATIONS = 8;
@@ -28,7 +52,7 @@ function normalizeRecommendationLimit(value, fallback = DEFAULT_MAX_RECOMMENDATI
 }
 
 function Dashboard() {
-  const fetch = useAuthenticatedFetch();
+  const fetch = useAppFetch();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -175,7 +199,7 @@ function Dashboard() {
       <Layout>
         {error && (
           <Layout.Section>
-            <Banner status="critical" onDismiss={() => setError(null)}>
+            <Banner tone="critical" onDismiss={() => setError(null)}>
               <p>{error}</p>
             </Banner>
           </Layout.Section>
@@ -183,7 +207,7 @@ function Dashboard() {
 
         {reauthRequired && (
           <Layout.Section>
-            <Banner status="warning">
+            <Banner tone="warning">
               <p>Session expired after uninstall/reinstall. Click below to re-authenticate; product sync starts automatically after auth callback.</p>
               <div style={{ marginTop: '12px' }}>
                 <Button primary onClick={handleReauthenticate}>
@@ -196,7 +220,7 @@ function Dashboard() {
 
         {success && (
           <Layout.Section>
-            <Banner status="success" onDismiss={() => setSuccess(null)}>
+            <Banner tone="success" onDismiss={() => setSuccess(null)}>
               <p>{success}</p>
             </Banner>
           </Layout.Section>

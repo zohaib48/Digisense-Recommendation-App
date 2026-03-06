@@ -2,7 +2,7 @@
 
 client_id = "8b28504982f6dc508e367f471fc16ba0"
 name = "product-recommendations"
-application_url = "https://meaningful-drunk-impaired-lowest.trycloudflare.com"
+application_url = "https://numerous-clock-financial-efficient.trycloudflare.com"
 embedded = true
 
 [build]
@@ -10,7 +10,7 @@ automatically_update_urls_on_dev = true
 dev_store_url = "zohaib-dev-2.myshopify.com"
 
 [webhooks]
-api_version = "2024-01"
+api_version = "2026-01"
 
   [[webhooks.subscriptions]]
   topics = ["products/create"]
@@ -24,17 +24,26 @@ api_version = "2024-01"
   topics = ["products/delete"]
   uri = "/webhooks/products/delete"
 
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks/app/uninstalled"
+
+[webhooks.privacy_compliance]
+customer_data_request_url = "/webhooks/privacy/customers-data-request"
+customer_deletion_url = "/webhooks/privacy/customers-redact"
+shop_deletion_url = "/webhooks/privacy/shop-redact"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_content,read_products,write_content,write_products"
 
 [auth]
-redirect_urls = [ "https://meaningful-drunk-impaired-lowest.trycloudflare.com/auth/callback" ]
+redirect_urls = [ "https://numerous-clock-financial-efficient.trycloudflare.com/auth/callback" ]
 
 [pos]
 embedded = false
 
 [app_proxy]
-url = "https://meaningful-drunk-impaired-lowest.trycloudflare.com/api/recommendations"
+url = "https://numerous-clock-financial-efficient.trycloudflare.com/api/recommendations"
 subpath = "recommendations"
 prefix = "apps"

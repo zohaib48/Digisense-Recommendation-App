@@ -1,43 +1,29 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { findSessionByShop } from '../db/sessionStore.js';
 import { ensureSessionInstance, validateSession } from './sessionUtils.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SESSION_FILE = path.join(__dirname, '..', '..', '.session-dev.json');
-
 /**
- * Resolve a valid Shopify session.
- * 1) Prefer in-memory active session.
- * 2) Fallback to persisted dev session file.
+ * Resolve a valid Shopify session for a given shop.
+ * Reads from the database (multi-tenant).
+ * @param {string} [shop] — Optional shop domain hint. Falls back to DEV_STORE_URL.
  */
-export async function resolveSessionValidation() {
-  if (global.sessionRevoked) {
-    return { session: null, valid: false, reason: 'unauthorized', missingScopes: [] };
-  }
+export async function resolveSessionValidation(shop) {
+  const targetShop = shop || process.env.DEV_STORE_URL || '';
 
-  const activeValidation = validateSession(global.activeSession);
-  if (activeValidation.valid) {
-    return activeValidation;
+  if (!targetShop) {
+    return { session: null, valid: false, reason: 'missing_shop', missingScopes: [] };
   }
 
   try {
-    const raw = await fs.readFile(SESSION_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    const session = ensureSessionInstance(parsed);
-    const fileValidation = validateSession(session);
-
-    if (fileValidation.valid) {
-      global.activeSession = fileValidation.session;
-      return fileValidation;
+    const rawSession = await findSessionByShop(targetShop);
+    if (!rawSession) {
+      return { session: null, valid: false, reason: 'missing_session', missingScopes: [] };
     }
 
-    return fileValidation;
+    const session = ensureSessionInstance(rawSession);
+    const validation = validateSession(session);
+    return validation;
   } catch (error) {
-    if (error.code !== 'ENOENT') {
-      console.error('Failed to read persisted session file:', error.message);
-    }
-    return activeValidation;
+    console.error('Failed to resolve session from database:', error.message);
+    return { session: null, valid: false, reason: 'error', missingScopes: [] };
   }
 }

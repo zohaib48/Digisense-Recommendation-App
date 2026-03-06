@@ -47,7 +47,7 @@ router.post('/products', async (req, res) => {
             });
         }
 
-        const validation = await resolveSessionValidation();
+        const validation = await resolveSessionValidation(req.query.shop);
         if (!validation.valid) {
             return sendSessionError(res, validation);
         }
@@ -91,7 +91,7 @@ router.post('/products', async (req, res) => {
  */
 router.get('/status', async (req, res) => {
     try {
-        const validation = await resolveSessionValidation();
+        const validation = await resolveSessionValidation(req.query.shop);
         const shop = validation.valid ? validation.session.shop : null;
 
         let productCount = 0;

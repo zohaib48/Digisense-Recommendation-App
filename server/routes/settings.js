@@ -52,7 +52,7 @@ function sendSessionError(req, res, validation) {
  */
 router.get('/', async (req, res) => {
     try {
-        const validation = await resolveSessionValidation();
+        const validation = await resolveSessionValidation(req.query.shop);
         if (!validation.valid) {
             return sendSessionError(req, res, validation);
         }
@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: true, message: 'Settings payload is required' });
         }
 
-        const validation = await resolveSessionValidation();
+        const validation = await resolveSessionValidation(req.query.shop);
         if (!validation.valid) {
             return sendSessionError(req, res, validation);
         }

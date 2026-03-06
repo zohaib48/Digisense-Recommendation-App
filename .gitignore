@@ -31,6 +31,7 @@ Thumbs.db
 
 # Shopify
 .shopify/
+.session-dev.json
 
 # Temporary files
 tmp/
@@ -43,3 +44,8 @@ coverage/
 # Cloudflare
 *.log
 cloudflared.exe
+
+# Debug/crash logs
+API_CRASH.log
+CRITICAL_ERRORS.log
+DEBUG_REC_FLOW.log

@@ -34,7 +34,7 @@ router.get('/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(res, validation);
     }
@@ -68,7 +68,7 @@ router.get('/', async (req, res) => {
   try {
     const { productType, tags, limit = 50 } = req.query;
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(res, validation);
     }
@@ -110,7 +110,7 @@ router.post('/search', async (req, res) => {
       });
     }
 
-    const validation = await resolveSessionValidation();
+    const validation = await resolveSessionValidation(req.query.shop);
     if (!validation.valid) {
       return sendSessionError(res, validation);
     }

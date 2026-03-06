@@ -2,6 +2,28 @@
 -- Safe to run multiple times (IF NOT EXISTS / OR REPLACE)
 
 -- ============================================================
+-- Sessions table (multi-tenant session storage)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sessions (
+  id            TEXT PRIMARY KEY,              -- Shopify session ID
+  shop          TEXT NOT NULL,                 -- e.g. my-store.myshopify.com
+  state         TEXT,                          -- OAuth state parameter
+  is_online     BOOLEAN NOT NULL DEFAULT false,
+  scope         TEXT,                          -- Granted scopes (comma-separated)
+  access_token  TEXT,                          -- Shopify access token
+  expires_at    TIMESTAMPTZ,                   -- Token expiry (online tokens only)
+  account_owner BOOLEAN NOT NULL DEFAULT false,
+  collaborator  BOOLEAN NOT NULL DEFAULT false,
+  first_name    TEXT,
+  last_name     TEXT,
+  email         TEXT,
+  locale        TEXT,
+  email_verified BOOLEAN DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
 -- Products table
 -- ============================================================
 CREATE TABLE IF NOT EXISTS products (
@@ -49,6 +71,9 @@ CREATE TABLE IF NOT EXISTS merchant_settings (
 -- Indexes for fast recommendation queries
 -- ============================================================
 
+-- Sessions: lookup by shop
+CREATE INDEX IF NOT EXISTS idx_sessions_shop ON sessions(shop);
+
 -- Products: filter by shop
 CREATE INDEX IF NOT EXISTS idx_products_shop ON products(shop);
 
@@ -69,3 +94,4 @@ CREATE INDEX IF NOT EXISTS idx_variants_available_price ON variants(shop, availa
 
 -- Variants: shop index
 CREATE INDEX IF NOT EXISTS idx_variants_shop ON variants(shop);
+

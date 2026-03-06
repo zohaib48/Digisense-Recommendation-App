@@ -1,4 +1,4 @@
-api_version = "2024-01"
+api_version = "2026-01"
 name = "recommendations"
 uid = "c324a80d-6d1c-7d93-6776-6386b4309fa831b9f871"
 type = "theme"

@@ -9,72 +9,307 @@
     <p class="cart-recommendations__subtitle">{{ section.settings.subtitle }}</p>
   </div>
 
-  <div class="cart-recommendations__loading" id="cart-recommendations-loading">
-    <div class="cart-recommendations__grid">
-      {% for i in (1..4) %}
-        <div class="cart-recommendation-card skeleton-card">
-          <div class="skeleton-image"></div>
-          <div class="skeleton-badge"></div>
-          <div class="skeleton-title"></div>
-          <div class="skeleton-price"></div>
-          <div class="skeleton-reason"></div>
-          <div class="skeleton-button"></div>
-        </div>
-      {% endfor %}
+  <div class="cart-recommendations__loading" id="cart-recommendations-loading-{{ section.id }}">
+    <div class="cart-recommendations__carousel cart-recommendations__carousel--loading">
+      <div class="cart-recommendations__track">
+        {% for i in (1..4) %}
+          <div class="cart-recommendation-card skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-content">
+              <div class="skeleton-badge"></div>
+              <div class="skeleton-title"></div>
+              <div class="skeleton-price"></div>
+              <div class="skeleton-reason"></div>
+              <div class="skeleton-actions">
+                <div class="skeleton-button"></div>
+                <div class="skeleton-button"></div>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 
-  <div class="cart-recommendations__container" id="cart-recommendations-container" style="display: none;">
-    <div class="cart-recommendations__grid" id="cart-recommendations-grid">
-      <!-- Recommendations will be inserted here -->
+  <div class="cart-recommendations__container" id="cart-recommendations-container-{{ section.id }}" style="display: none;">
+    <div class="cart-recommendations__carousel">
+      <button
+        type="button"
+        class="cart-recommendations__arrow cart-recommendations__arrow--prev"
+        id="cart-recommendations-prev-{{ section.id }}"
+        aria-label="Show previous recommendations"
+        hidden
+      >
+        <span aria-hidden="true">&#8249;</span>
+      </button>
+
+      <div class="cart-recommendations__track" id="cart-recommendations-track-{{ section.id }}">
+        <!-- Recommendations will be inserted here -->
+      </div>
+
+      <button
+        type="button"
+        class="cart-recommendations__arrow cart-recommendations__arrow--next"
+        id="cart-recommendations-next-{{ section.id }}"
+        aria-label="Show next recommendations"
+        hidden
+      >
+        <span aria-hidden="true">&#8250;</span>
+      </button>
     </div>
   </div>
 
-  <div class="cart-recommendations__empty" id="cart-recommendations-empty" style="display: none;">
+  <div class="cart-recommendations__empty" id="cart-recommendations-empty-{{ section.id }}" style="display: none;">
     <p>{{ section.settings.empty_message }}</p>
   </div>
 </div>
 
 <style>
   .cart-recommendations {
-    margin: 3rem 0;
-    padding: 2rem;
-    background-color: #f9f9f9;
-    border-radius: 8px;
+    --cart-border: rgba(21, 28, 56, 0.12);
+    --cart-title: #171f3b;
+    --cart-subtle: #505c78;
+    --cart-accent: #2f5cf3;
+    --cart-accent-soft: #eaf0ff;
+    --cart-gap: 1rem;
+    margin: 3.5rem 0;
+    padding: 2rem 1.5rem;
+    background: transparent;
+    border-radius: 0;
+    border: 0;
+    font-family: 'Avenir Next', 'Manrope', 'Helvetica Neue', sans-serif;
   }
 
   .cart-recommendations__header {
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-
-  .cart-recommendations__title {
-    font-size: 1.75rem;
-    font-weight: 600;
-    margin: 0 0 0.5rem 0;
-  }
-
-  .cart-recommendations__subtitle {
-    color: #666;
-    font-size: 1rem;
-    margin: 0;
-  }
-
-  .cart-recommendations__loading {
-    /* no extra padding or centering – let the inner grid control layout */
-  }
-
-  /* Skeleton Loader Styles */
-  .cart-recommendations__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 1.5rem;
+    margin-bottom: 1.35rem;
     text-align: left;
   }
 
+  .cart-recommendations__title {
+    margin: 0;
+    color: var(--cart-title);
+    font-size: clamp(1.4rem, 2.2vw, 2rem);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .cart-recommendations__subtitle {
+    margin: 0.32rem 0 0;
+    color: var(--cart-subtle);
+    font-size: 0.95rem;
+  }
+
+  .cart-recommendations__carousel {
+    position: relative;
+    width: 100%;
+    max-width: 980px;
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding-inline: 0;
+  }
+
+  .cart-recommendations__track {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--cart-gap);
+    overflow: visible;
+    padding: 0.2rem 0;
+  }
+
+  .cart-recommendations__arrow {
+    display: none !important;
+  }
+
+  .cart-recommendation-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(150px, 180px) minmax(0, 1fr);
+    gap: 1rem;
+    background: #fff;
+    border: 1px solid var(--cart-border);
+    border-radius: 16px;
+    overflow: clip;
+    box-shadow: 0 10px 22px rgba(18, 28, 58, 0.06);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+
+  .cart-recommendation-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(47, 92, 243, 0.28);
+    box-shadow: 0 16px 30px rgba(18, 28, 58, 0.16);
+  }
+
+  .cart-recommendation-card__media {
+    position: relative;
+    display: block;
+    min-height: 100%;
+    aspect-ratio: 1 / 1;
+    background: #edf0f9;
+  }
+
+  .cart-recommendation-card__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .cart-recommendation-card__placeholder {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background:
+      linear-gradient(135deg, rgba(56, 82, 182, 0.16), rgba(40, 64, 153, 0.08)),
+      #edf0f8;
+  }
+
+  .cart-recommendation-card__badge {
+    position: absolute;
+    top: 0.7rem;
+    left: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.6rem;
+    padding: 0.15rem 0.65rem;
+    border-radius: 999px;
+    background: var(--cart-accent-soft);
+    color: #2442ae;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .cart-recommendation-card__content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.56rem;
+    padding: 0.95rem 0.95rem 0.95rem 0;
+  }
+
+  .cart-recommendation-card__title-link {
+    color: var(--cart-title);
+    text-decoration: none;
+  }
+
+  .cart-recommendation-card__title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 630;
+    line-height: 1.35;
+  }
+
+  .cart-recommendation-card__price {
+    color: #163fcb;
+    font-size: 1.02rem;
+    font-weight: 720;
+    letter-spacing: -0.01em;
+  }
+
+  .cart-recommendation-card__reason {
+    margin: 0;
+    color: var(--cart-subtle);
+    font-size: 0.83rem;
+    line-height: 1.4;
+  }
+
+  .cart-recommendation-card__action {
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.35rem;
+    padding: 0 0.9rem;
+    border: 1px solid rgba(38, 69, 188, 0.2);
+    border-radius: 10px;
+    background: #f5f8ff;
+    color: #1a3eb8;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  }
+
+  .cart-recommendation-card__action:hover {
+    border-color: rgba(38, 69, 188, 0.34);
+    background: #ecf2ff;
+    transform: translateY(-1px);
+  }
+
+  .cart-recommendation-card__action:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .cart-recommendation-card__actions {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+  }
+
+  .cart-recommendation-card__action--add {
+    background: #1f3f9c;
+    border-color: #1f3f9c;
+    color: #fff;
+  }
+
+  .cart-recommendation-card__action--add:hover:not(:disabled) {
+    background: #173282;
+    border-color: #173282;
+  }
+
+  .cart-recommendation-card__action--add.is-loading {
+    color: transparent;
+    position: relative;
+  }
+
+  .cart-recommendation-card__action--add.is-loading::after {
+    content: '';
+    position: absolute;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    animation: cartAddSpin 0.75s linear infinite;
+  }
+
+  .cart-recommendations__empty {
+    text-align: center;
+    padding: 1.35rem 0.4rem 0.25rem;
+    color: #596689;
+    font-size: 0.94rem;
+  }
+
   .skeleton-card {
-    border: 1px solid #f0f0f0;
     pointer-events: none;
+    box-shadow: none;
+  }
+
+  .skeleton-card:hover {
+    transform: none;
+    border-color: var(--cart-border);
+    box-shadow: none;
+  }
+
+  .skeleton-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.95rem 0.95rem 0.95rem 0;
+  }
+
+  .skeleton-actions {
+    margin-top: auto;
+    display: flex;
+    gap: 0.55rem;
+    flex-wrap: wrap;
   }
 
   .skeleton-image,
@@ -83,161 +318,88 @@
   .skeleton-price,
   .skeleton-reason,
   .skeleton-button {
-    background: #eee;
-    background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
-    background-size: 200% 100%;
-    animation: 1.5s pulse linear infinite;
-    border-radius: 4px;
+    background: linear-gradient(110deg, #eef1f8 8%, #f8f9ff 18%, #eef1f8 33%);
+    background-size: 210% 100%;
+    animation: cartRecPulse 1.2s linear infinite;
+    border-radius: 8px;
   }
 
   .skeleton-image {
     width: 100%;
-    aspect-ratio: 1;
-    margin-bottom: 1rem;
+    min-height: 100%;
+    aspect-ratio: 1 / 1;
   }
 
   .skeleton-badge {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    height: 24px;
-    width: 100px;
-    border-radius: 12px;
-    z-index: 1;
+    width: 46%;
+    height: 1.1rem;
+    border-radius: 999px;
   }
 
   .skeleton-title {
-    height: 20px;
-    width: 80%;
-    margin-bottom: 0.5rem;
+    width: 76%;
+    height: 0.95rem;
   }
 
   .skeleton-price {
-    height: 24px;
-    width: 60%;
-    margin-bottom: 0.5rem;
+    width: 40%;
+    height: 1rem;
   }
 
   .skeleton-reason {
-    height: 16px;
-    width: 90%;
-    margin-bottom: 1rem;
-    flex: 1;
+    width: 80%;
+    height: 0.8rem;
   }
 
   .skeleton-button {
-    height: 40px;
-    width: 100%;
-    border-radius: 4px;
+    width: 108px;
+    height: 2.2rem;
+    border-radius: 10px;
   }
 
-  @keyframes pulse {
+  @keyframes cartRecPulse {
     to {
-      background-position-x: -200%;
+      background-position-x: -210%;
     }
   }
 
-  .cart-recommendations__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 1.5rem;
+  @media (max-width: 980px) {
+    .cart-recommendations {
+      margin: 3rem 0;
+      padding: 1.45rem 1rem;
+    }
   }
 
-  .cart-recommendation-card {
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 1rem;
-    text-decoration: none;
-    color: inherit;
-    transition: transform 0.2s, box-shadow 0.2s;
-    display: flex;
-    flex-direction: column;
-    position: relative;
+  @media (max-width: 749px) {
+    .cart-recommendations {
+      padding: 1.1rem 0.75rem 1.2rem;
+    }
+
+    .cart-recommendations__title {
+      font-size: 1.28rem;
+    }
+
+    .cart-recommendations__subtitle {
+      font-size: 0.88rem;
+    }
+
+    .cart-recommendation-card {
+      grid-template-columns: minmax(0, 1fr);
+      border-radius: 14px;
+    }
+
+    .cart-recommendation-card__content {
+      padding: 0.9rem;
+    }
+
+    .skeleton-content {
+      padding: 0.9rem;
+    }
   }
 
-  .cart-recommendation-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-  }
-
-  .cart-recommendation-card__badge {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    background-color: #1976d2;
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    z-index: 1;
-  }
-
-  .cart-recommendation-card__image {
-    width: 100%;
-    aspect-ratio: 1;
-    object-fit: cover;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-  }
-
-  .cart-recommendation-card__content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .cart-recommendation-card__title {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    line-height: 1.4;
-  }
-
-  .cart-recommendation-card__price {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #2e7d32;
-    margin-bottom: 0.5rem;
-  }
-
-  .cart-recommendation-card__reason {
-    font-size: 0.875rem;
-    color: #666;
-    margin-bottom: 1rem;
-    flex: 1;
-  }
-
-  .cart-recommendation-card__add-to-cart {
-    width: 100%;
-    padding: 0.75rem;
-    background-color: #000;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    text-align: center;
-    text-decoration: none;
-    display: block;
-  }
-
-  .cart-recommendation-card__add-to-cart:hover {
-    background-color: #333;
-    color: white;
-  }
-
-  .cart-recommendations__empty {
-    text-align: center;
-    padding: 2rem;
-    color: #666;
-  }
-
-  @media (max-width: 768px) {
-    .cart-recommendations__grid {
-      grid-template-columns: repeat(2, 1fr);
+  @keyframes cartAddSpin {
+    to {
+      transform: rotate(360deg);
     }
   }
 </style>
@@ -246,6 +408,19 @@
   (function () {
     const DIRECT_APP_BASE = {{ shop.metafields.recommendations_app.api_url.value | json }};
     const APP_PROXY_BASE = '/apps/recommendations';
+    const sectionId = {{ section.id | json }};
+    const root = document.getElementById(`cart-recommendations-${sectionId}`);
+
+    if (!root) return;
+
+    const elements = {
+      loading: root.querySelector(`#cart-recommendations-loading-${sectionId}`),
+      container: root.querySelector(`#cart-recommendations-container-${sectionId}`),
+      track: root.querySelector(`#cart-recommendations-track-${sectionId}`),
+      empty: root.querySelector(`#cart-recommendations-empty-${sectionId}`),
+      prev: root.querySelector(`#cart-recommendations-prev-${sectionId}`),
+      next: root.querySelector(`#cart-recommendations-next-${sectionId}`)
+    };
 
     function buildRecommendationsUrl(path) {
       if (DIRECT_APP_BASE) {
@@ -255,29 +430,209 @@
       return `${APP_PROXY_BASE}${path}`;
     }
 
-    async function loadCartRecommendations() {
-      try {
-        // Get cart data
-        const cartResponse = await fetch('/cart.js');
-        const cart = await cartResponse.json();
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-        if (!cart.items || cart.items.length === 0) {
-          document.getElementById('cart-recommendations-loading').style.display = 'none';
-          document.getElementById('cart-recommendations-empty').style.display = 'block';
+    function formatPriceRange(priceRange) {
+      const min = Number(priceRange && priceRange.min != null ? priceRange.min : 0);
+      const max = Number(priceRange && priceRange.max != null ? priceRange.max : min);
+      if (max > min) return `$${min.toFixed(2)} - $${max.toFixed(2)}`;
+      return `$${min.toFixed(2)}`;
+    }
+
+    function matchLabel(score) {
+      if (score >= 80) return 'Top Pick';
+      if (score >= 60) return 'Great Match';
+      return 'Similar';
+    }
+
+    function normalizeVariantId(rawId) {
+      if (rawId == null) return '';
+      const raw = String(rawId).trim();
+      if (!raw) return '';
+      if (/^\d+$/.test(raw)) return raw;
+      const gidMatch = raw.match(/(\d+)\s*$/);
+      return gidMatch ? gidMatch[1] : '';
+    }
+
+    function getPreferredVariantId(product) {
+      const matchingVariant = Array.isArray(product.matchingVariants) ? product.matchingVariants[0] : null;
+      const firstVariant = Array.isArray(product.variants) ? product.variants[0] : null;
+      return normalizeVariantId(
+        (matchingVariant && matchingVariant.id) ||
+          (firstVariant && firstVariant.id) ||
+          product.variant_id
+      );
+    }
+
+    function initCarousel(track, prevButton, nextButton) {
+      if (!track || !prevButton || !nextButton) {
+        return function noop() {};
+      }
+
+      const tolerance = 4;
+      let resizeObserver = null;
+
+      function readGap() {
+        const computedStyle = window.getComputedStyle(track);
+        const gapValue = parseFloat(computedStyle.columnGap || computedStyle.gap || '0');
+        return Number.isFinite(gapValue) ? gapValue : 0;
+      }
+
+      function getCardWidth() {
+        const card = track.querySelector('.cart-recommendation-card, .skeleton-card');
+        return card ? card.getBoundingClientRect().width : 220;
+      }
+
+      function updateArrows() {
+        const hasOverflow = track.scrollWidth - track.clientWidth > tolerance;
+        track.classList.toggle('is-balanced', !hasOverflow);
+        prevButton.hidden = !hasOverflow;
+        nextButton.hidden = !hasOverflow;
+
+        if (!hasOverflow) {
+          track.scrollLeft = 0;
+          prevButton.disabled = true;
+          nextButton.disabled = true;
           return;
         }
 
-        // Prepare cart items data
-        const items = cart.items.map((item) => ({
-          variant_id: item.variant_id,
-          product_id: item.product_id,
-          variant_title: item.variant_title,
-          price: item.price / 100,
-          properties: item.properties || {},
-        }));
+        prevButton.disabled = track.scrollLeft <= tolerance;
+        nextButton.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - tolerance;
+      }
+
+      function scrollByStep(direction) {
+        const cardWidth = getCardWidth();
+        const gap = readGap();
+        const stepByCard = cardWidth + gap;
+        const visibleCards = Math.max(1, Math.floor((track.clientWidth + gap) / Math.max(stepByCard, 1)));
+        const step = stepByCard * Math.max(1, visibleCards - 1);
+        track.scrollBy({
+          left: direction * Math.max(step, stepByCard),
+          behavior: 'smooth'
+        });
+      }
+
+      prevButton.addEventListener('click', function () {
+        scrollByStep(-1);
+      });
+      nextButton.addEventListener('click', function () {
+        scrollByStep(1);
+      });
+
+      track.addEventListener(
+        'scroll',
+        function () {
+          window.requestAnimationFrame(updateArrows);
+        },
+        { passive: true }
+      );
+
+      track.addEventListener(
+        'load',
+        function () {
+          window.requestAnimationFrame(updateArrows);
+        },
+        true
+      );
+
+      window.addEventListener('resize', updateArrows);
+
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(updateArrows);
+        resizeObserver.observe(track);
+      }
+
+      window.requestAnimationFrame(updateArrows);
+
+      return function refreshCarousel() {
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+          resizeObserver.observe(track);
+        }
+        window.requestAnimationFrame(updateArrows);
+      };
+    }
+
+    const refreshCarousel = initCarousel(elements.track, elements.prev, elements.next);
+
+    async function addRecommendationToCart(button) {
+      if (!button) return;
+      const variantId = normalizeVariantId(button.getAttribute('data-variant-id'));
+      if (!variantId || button.disabled || button.classList.contains('is-loading')) return;
+
+      button.classList.add('is-loading');
+      button.disabled = true;
+
+      try {
+        const response = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify({
+            items: [{ id: Number(variantId), quantity: 1 }]
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Add to cart failed (${response.status}): ${errorText}`);
+        }
+
+        button.textContent = 'Added';
+        const cartResponse = await fetch('/cart.js', { cache: 'no-store' });
+        const cart = await cartResponse.json();
+        const detail = { cart, source: 'cart-recommendations' };
+        document.dispatchEvent(new CustomEvent('cart:updated', { detail, bubbles: true }));
+        document.dispatchEvent(new CustomEvent('cart:refresh', { detail, bubbles: true }));
+        document.dispatchEvent(new CustomEvent('cart:change', { detail, bubbles: true }));
+        if (window.Shopify && typeof window.Shopify.onCartUpdate === 'function') {
+          window.Shopify.onCartUpdate(cart);
+        }
+        setTimeout(loadCartRecommendations, 320);
+      } catch (error) {
+        console.error('Cart add error:', error);
+        button.textContent = 'Unavailable';
+      } finally {
+        button.classList.remove('is-loading');
+      }
+    }
+
+    async function loadCartRecommendations() {
+      try {
+        const cartResponse = await fetch('/cart.js', { cache: 'no-store' });
+        const cart = await cartResponse.json();
+
+        if (!cart.items || cart.items.length === 0) {
+          if (elements.loading) elements.loading.style.display = 'none';
+          if (elements.container) elements.container.style.display = 'none';
+          if (elements.empty) elements.empty.style.display = 'block';
+          if (elements.track) elements.track.innerHTML = '';
+          refreshCarousel();
+          return;
+        }
+
+        const items = cart.items.map(function (item) {
+          return {
+            variant_id: item.variant_id,
+            product_id: item.product_id,
+            variant_title: item.variant_title,
+            price: item.price / 100,
+            properties: item.properties || {}
+          };
+        });
 
         const requestUrl = buildRecommendationsUrl(`/cart?items=${encodeURIComponent(JSON.stringify(items))}`);
         const response = await fetch(requestUrl);
+
         if (!response.ok) {
           const errorBody = await response.text();
           console.error('Cart recommendations request failed', {
@@ -289,81 +644,91 @@
         }
 
         const data = await response.json();
-        displayCartRecommendations(data.recommendations);
+        displayCartRecommendations(Array.isArray(data.recommendations) ? data.recommendations : []);
       } catch (error) {
         console.error('Cart recommendations error:', error);
-        document.getElementById('cart-recommendations-loading').style.display = 'none';
-        document.getElementById('cart-recommendations-empty').style.display = 'block';
+        if (elements.loading) elements.loading.style.display = 'none';
+        if (elements.container) elements.container.style.display = 'none';
+        if (elements.empty) elements.empty.style.display = 'block';
       }
     }
 
     function displayCartRecommendations(recommendations) {
-      const loading = document.getElementById('cart-recommendations-loading');
-      const container = document.getElementById('cart-recommendations-container');
-      const grid = document.getElementById('cart-recommendations-grid');
-      const empty = document.getElementById('cart-recommendations-empty');
+      if (!elements.track) return;
 
-      loading.style.display = 'none';
+      if (elements.loading) elements.loading.style.display = 'none';
 
       if (!recommendations || recommendations.length === 0) {
-        empty.style.display = 'block';
+        if (elements.container) elements.container.style.display = 'none';
+        if (elements.empty) elements.empty.style.display = 'block';
+        elements.track.innerHTML = '';
+        refreshCarousel();
         return;
       }
 
-      container.style.display = 'block';
+      if (elements.empty) elements.empty.style.display = 'none';
+      if (elements.container) elements.container.style.display = 'block';
 
-      grid.innerHTML = recommendations
-        .map((product) => {
+      elements.track.innerHTML = recommendations
+        .map(function (product) {
           const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
-          const matchQuality =
-            product.relevanceScore >= 80
-              ? 'Perfect Match'
-              : product.relevanceScore >= 60
-              ? 'Great Match'
-              : 'Good Match';
-
-          // Get first available variant for add to cart
-          const firstVariant =
-            product.matchingVariants && product.matchingVariants[0] ? product.matchingVariants[0] : product.variants[0];
+          const title = escapeHtml(product.title);
+          const handle = escapeHtml(product.handle);
+          const reason = product.reason ? `<p class="cart-recommendation-card__reason">${escapeHtml(product.reason)}</p>` : '';
+          const badge = matchLabel(Number(product.relevanceScore || 0));
+          const variantId = getPreferredVariantId(product);
+          const addDisabledAttr = variantId ? '' : 'disabled';
 
           return `
-        <div class="cart-recommendation-card">
-          <span class="cart-recommendation-card__badge">${matchQuality}</span>
-          <a href="/products/${product.handle}">
-            ${
-              imageUrl
-                ? `<img src="${imageUrl}" alt="${product.title}" class="cart-recommendation-card__image" loading="lazy">`
-                : ''
-            }
-          </a>
-          <div class="cart-recommendation-card__content">
-            <a href="/products/${product.handle}" style="text-decoration: none; color: inherit;">
-              <h3 class="cart-recommendation-card__title">${product.title}</h3>
-            </a>
-            <div class="cart-recommendation-card__price">
-              $${product.priceRange.min.toFixed(2)}
-              ${product.priceRange.min !== product.priceRange.max ? ` - $${product.priceRange.max.toFixed(2)}` : ''}
-            </div>
-            ${product.reason ? `<p class="cart-recommendation-card__reason">${product.reason}</p>` : ''}
-            <a href="/products/${product.handle}" class="cart-recommendation-card__add-to-cart">
-              View Product
-            </a>
-          </div>
-        </div>
-      `;
+            <article class="cart-recommendation-card">
+              <a href="/products/${handle}" class="cart-recommendation-card__media">
+                ${
+                  imageUrl
+                    ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" class="cart-recommendation-card__image" loading="lazy">`
+                    : '<span class="cart-recommendation-card__placeholder" aria-hidden="true"></span>'
+                }
+                <span class="cart-recommendation-card__badge">${badge}</span>
+              </a>
+              <div class="cart-recommendation-card__content">
+                <a href="/products/${handle}" class="cart-recommendation-card__title-link">
+                  <h3 class="cart-recommendation-card__title">${title}</h3>
+                </a>
+                <div class="cart-recommendation-card__price">${formatPriceRange(product.priceRange)}</div>
+                ${reason}
+                <div class="cart-recommendation-card__actions">
+                  <button
+                    type="button"
+                    class="cart-recommendation-card__action cart-recommendation-card__action--add"
+                    data-variant-id="${variantId}"
+                    ${addDisabledAttr}
+                  >
+                    Add to cart
+                  </button>
+                  <a href="/products/${handle}" class="cart-recommendation-card__action">View product</a>
+                </div>
+              </div>
+            </article>
+          `;
         })
         .join('');
+
+      refreshCarousel();
     }
 
-    // Load recommendations on page load
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', loadCartRecommendations);
     } else {
       loadCartRecommendations();
     }
 
-    // Refresh recommendations when cart is updated
     document.addEventListener('cart:updated', loadCartRecommendations);
+
+    root.addEventListener('click', function (event) {
+      const addButton = event.target.closest('.cart-recommendation-card__action--add');
+      if (!addButton) return;
+      event.preventDefault();
+      addRecommendationToCart(addButton);
+    });
   })();
 </script>
 

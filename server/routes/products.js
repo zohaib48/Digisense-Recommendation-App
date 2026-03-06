@@ -1,10 +1,5 @@
 import express from 'express';
-import { createGraphQLClient } from '../utils/shopifyClient.js';
-import { 
-  getProductDetails, 
-  getProductsByFilters,
-  searchProducts 
-} from '../utils/productQueries.js';
+import { getProductById, getFilteredProducts } from '../db/productStore.js';
 import { resolveSessionValidation } from '../utils/sessionResolver.js';
 
 const router = express.Router();
@@ -18,6 +13,13 @@ function sendSessionError(res, validation) {
     });
   }
 
+  if (validation.reason === 'unauthorized') {
+    return res.status(401).json({
+      error: true,
+      message: 'Stored session was revoked by Shopify. Re-open the app from Shopify Admin to re-authenticate.',
+    });
+  }
+
   return res.status(401).json({
     error: true,
     message: 'No active valid session. Please open the app in Shopify Admin to authenticate.',
@@ -26,7 +28,7 @@ function sendSessionError(res, validation) {
 
 /**
  * GET /api/products/:productId
- * Get details of a specific product
+ * Get details of a specific product from the local DB.
  */
 router.get('/:productId', async (req, res) => {
   try {
@@ -37,8 +39,8 @@ router.get('/:productId', async (req, res) => {
       return sendSessionError(res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const product = await getProductDetails(client, productId);
+    const shop = validation.session.shop;
+    const product = await getProductById(productId, shop);
 
     if (!product) {
       return res.status(404).json({
@@ -60,7 +62,7 @@ router.get('/:productId', async (req, res) => {
 
 /**
  * GET /api/products
- * Get products with optional filters
+ * Get products with optional filters from the local DB.
  */
 router.get('/', async (req, res) => {
   try {
@@ -71,8 +73,8 @@ router.get('/', async (req, res) => {
       return sendSessionError(res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const products = await getProductsByFilters(client, {
+    const shop = validation.session.shop;
+    const products = await getFilteredProducts(shop, {
       productType,
       tags: tags ? tags.split(',') : undefined,
       limit: parseInt(limit)
@@ -94,13 +96,14 @@ router.get('/', async (req, res) => {
 
 /**
  * POST /api/products/search
- * Search products by query
+ * Search products by query in the local DB.
+ * Uses ILIKE for simple text matching on title, product_type, and tags.
  */
 router.post('/search', async (req, res) => {
   try {
-    const { query, limit = 20 } = req.body;
+    const { query: searchQuery, limit = 20 } = req.body;
 
-    if (!query) {
+    if (!searchQuery) {
       return res.status(400).json({
         error: true,
         message: 'Search query is required'
@@ -112,13 +115,25 @@ router.post('/search', async (req, res) => {
       return sendSessionError(res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const products = await searchProducts(client, query, parseInt(limit));
+    const shop = validation.session.shop;
+
+    // For search, we use getFilteredProducts with no type/tag filter
+    // and then filter client-side by title match.
+    // A more advanced approach would add a full-text search index.
+    const allProducts = await getFilteredProducts(shop, { limit: parseInt(limit) * 5 });
+    const lowerQuery = searchQuery.toLowerCase();
+    const products = allProducts
+      .filter(p =>
+        p.title.toLowerCase().includes(lowerQuery) ||
+        p.productType.toLowerCase().includes(lowerQuery) ||
+        p.tags.some(t => t.toLowerCase().includes(lowerQuery))
+      )
+      .slice(0, parseInt(limit));
 
     res.json({
       products,
       count: products.length,
-      query
+      query: searchQuery
     });
 
   } catch (error) {

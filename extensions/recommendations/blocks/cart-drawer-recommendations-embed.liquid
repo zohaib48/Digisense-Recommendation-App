@@ -1,6 +1,6 @@
 {% comment %}
   Cart Drawer Recommendations (App Embed)
-  Mounts inside drawer carts and refreshes on cart updates.
+  Modern vertical list inside the cart drawer with instant Add-to-Cart updates.
 {% endcomment %}
 
 <script>
@@ -39,15 +39,6 @@
       return !!node.closest(`#${WIDGET_ID}`);
     }
 
-    function getWidgetParts(widget) {
-      if (!widget || !widget.isConnected) return null;
-      const loading = widget.querySelector('.drawer-recommendations__loading');
-      const list = widget.querySelector('.drawer-recommendations__list');
-      const empty = widget.querySelector('.drawer-recommendations__empty');
-      if (!loading || !list || !empty) return null;
-      return { loading, list, empty };
-    }
-
     function ensureWidgetMounted() {
       const mountPoint = findDrawerMountPoint();
       if (!mountPoint) return null;
@@ -56,14 +47,17 @@
       if (!widget) {
         widget = document.createElement('div');
         widget.id = WIDGET_ID;
-        widget.className = 'drawer-recommendations';
+        widget.className = 'dr-recs';
         widget.innerHTML = `
-          <div class="drawer-recommendations__header">
-            <h3 class="drawer-recommendations__title">${HEADING || 'You may also like'}</h3>
+          <div class="dr-recs__header">
+            <h3 class="dr-recs__title">${HEADING || 'You may also like'}</h3>
           </div>
-          <div class="drawer-recommendations__loading">Loading recommendations...</div>
-          <div class="drawer-recommendations__list" hidden></div>
-          <div class="drawer-recommendations__empty" hidden>${EMPTY_MESSAGE || 'No recommendations found'}</div>
+          <div class="dr-recs__loading" id="${WIDGET_ID}-loading">
+            <div class="dr-recs__skeleton"></div>
+            <div class="dr-recs__skeleton"></div>
+          </div>
+          <div class="dr-recs__list" id="${WIDGET_ID}-list" style="display:none;"></div>
+          <div class="dr-recs__empty" id="${WIDGET_ID}-empty" style="display:none;">${EMPTY_MESSAGE || 'No recommendations found'}</div>
         `;
 
         const cartCtas = mountPoint.querySelector('.cart__ctas');
@@ -78,15 +72,192 @@
         const style = document.createElement('style');
         style.id = `${WIDGET_ID}-style`;
         style.textContent = `
-          .drawer-recommendations { border-top: 1px solid rgba(0,0,0,0.08); margin-top: 12px; padding-top: 12px; }
-          .drawer-recommendations__title { font-size: 14px; margin: 0 0 8px; }
-          .drawer-recommendations__loading,
-          .drawer-recommendations__empty { font-size: 12px; color: #666; padding: 8px 0; }
-          .drawer-recommendations__list { display: grid; gap: 8px; }
-          .drawer-recommendations__item { display: grid; grid-template-columns: 48px 1fr; gap: 8px; align-items: center; text-decoration: none; color: inherit; }
-          .drawer-recommendations__item img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; background: #f5f5f5; }
-          .drawer-recommendations__item-title { font-size: 12px; line-height: 1.2; margin: 0 0 2px; }
-          .drawer-recommendations__item-price { font-size: 12px; font-weight: 600; margin: 0; }
+          .dr-recs {
+            margin-top: 1rem;
+            padding: 1rem 0 0;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+          }
+          .dr-recs__header {
+            margin-bottom: 0.75rem;
+          }
+          .dr-recs__title {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 650;
+            color: #1a1a2e;
+            letter-spacing: -0.01em;
+          }
+
+          /* Loading skeleton */
+          .dr-recs__loading {
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+          }
+          .dr-recs__skeleton {
+            height: 80px;
+            border-radius: 12px;
+            background: linear-gradient(110deg, #f0f0f5 8%, #fafafa 18%, #f0f0f5 33%);
+            background-size: 200% 100%;
+            animation: drRecPulse 1.4s ease-in-out infinite;
+          }
+          @keyframes drRecPulse {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+          }
+
+          /* Vertical scrollable list */
+          .dr-recs__list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            max-height: 340px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0,0,0,0.15) transparent;
+            padding-right: 4px;
+          }
+          .dr-recs__list::-webkit-scrollbar {
+            width: 4px;
+          }
+          .dr-recs__list::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .dr-recs__list::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.12);
+            border-radius: 4px;
+          }
+
+          /* Card */
+          .dr-recs__card {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            padding: 0.6rem;
+            border-radius: 14px;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            background: #fafafe;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+          .dr-recs__card:hover {
+            border-color: rgba(0, 0, 0, 0.12);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+          }
+
+          /* Image */
+          .dr-recs__img-wrap {
+            width: 68px;
+            height: 68px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #eef0f4;
+          }
+          .dr-recs__img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .dr-recs__img-placeholder {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(100,120,200,0.12), rgba(60,80,160,0.06));
+          }
+
+          /* Content */
+          .dr-recs__info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+          }
+          .dr-recs__name {
+            margin: 0;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #1a1a2e;
+            line-height: 1.3;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .dr-recs__price {
+            margin: 0;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #2a5cdb;
+          }
+
+          /* Action buttons */
+          .dr-recs__actions {
+            display: flex;
+            gap: 0.4rem;
+            margin-top: 0.15rem;
+          }
+          .dr-recs__btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 1.75rem;
+            padding: 0 0.6rem;
+            border-radius: 8px;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+          }
+          .dr-recs__btn:hover {
+            opacity: 0.88;
+            transform: translateY(-1px);
+          }
+          .dr-recs__btn--add {
+            background: #1a1a2e;
+            color: #fff;
+            min-width: 72px;
+            position: relative;
+          }
+          .dr-recs__btn--add:disabled {
+            opacity: 0.4;
+            cursor: default;
+            transform: none;
+          }
+          .dr-recs__btn--add.is-added {
+            background: #16a34a;
+          }
+          .dr-recs__btn--add.is-loading {
+            color: transparent;
+          }
+          .dr-recs__btn--add.is-loading::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: drBtnSpin 0.6s linear infinite;
+          }
+          @keyframes drBtnSpin {
+            to { transform: rotate(360deg); }
+          }
+          .dr-recs__btn--view {
+            background: transparent;
+            border: 1px solid rgba(0,0,0,0.12);
+            color: #1a1a2e;
+          }
+
+          .dr-recs__empty {
+            font-size: 0.82rem;
+            color: #888;
+            padding: 0.5rem 0;
+          }
         `;
         document.head.appendChild(style);
       }
@@ -94,8 +265,130 @@
       return widget;
     }
 
-    async function fetchDrawerRecommendations() {
-      const cartResponse = await fetch('/cart.js');
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatPriceRange(priceRange) {
+      const min = Number(priceRange && priceRange.min != null ? priceRange.min : 0);
+      const max = Number(priceRange && priceRange.max != null ? priceRange.max : min);
+      if (max > min) return `$${min.toFixed(2)} – $${max.toFixed(2)}`;
+      return `$${min.toFixed(2)}`;
+    }
+
+    function normalizeVariantId(rawId) {
+      if (rawId == null) return '';
+      const raw = String(rawId).trim();
+      if (!raw) return '';
+      if (/^\d+$/.test(raw)) return raw;
+      const gidMatch = raw.match(/(\d+)\s*$/);
+      return gidMatch ? gidMatch[1] : '';
+    }
+
+    function getPreferredVariantId(product) {
+      const matchingVariant = Array.isArray(product.matchingVariants) ? product.matchingVariants[0] : null;
+      const firstVariant = Array.isArray(product.variants) ? product.variants[0] : null;
+      return normalizeVariantId(
+        (matchingVariant && matchingVariant.id) ||
+          (firstVariant && firstVariant.id) ||
+          product.variant_id
+      );
+    }
+
+    /**
+     * Refresh the cart drawer sections so the count, items, and totals update
+     * instantly after adding a recommended item.
+     */
+    async function refreshCartDrawer() {
+      try {
+        // Method 1: Dawn's native section rendering API
+        const sectionsUrl = `${window.location.pathname}?sections=cart-drawer,cart-icon-bubble,cart-notification-button`;
+        const response = await fetch(sectionsUrl);
+        if (response.ok) {
+          const sections = await response.json();
+          for (const [sectionId, html] of Object.entries(sections)) {
+            const targets = document.querySelectorAll(`#shopify-section-${sectionId}, .shopify-section-${sectionId}`);
+            targets.forEach(target => {
+              target.innerHTML = new DOMParser()
+                .parseFromString(html, 'text/html')
+                .querySelector(`#shopify-section-${sectionId}, .shopify-section-${sectionId}`)?.innerHTML || html;
+            });
+          }
+        }
+      } catch (e) {
+        // Fallback: reload the page fragment
+        console.warn('[Drawer Recs] Section refresh failed:', e);
+      }
+
+      // Method 2: Trigger standard cart events
+      try {
+        const cartResponse = await fetch('/cart.js', { cache: 'no-store' });
+        const cart = await cartResponse.json();
+        const detail = { cart, source: 'drawer-recommendations' };
+        document.dispatchEvent(new CustomEvent('cart:updated', { detail, bubbles: true }));
+        document.dispatchEvent(new CustomEvent('cart:refresh', { detail, bubbles: true }));
+        document.dispatchEvent(new CustomEvent('cart:change', { detail, bubbles: true }));
+        if (window.Shopify && typeof window.Shopify.onCartUpdate === 'function') {
+          window.Shopify.onCartUpdate(cart);
+        }
+
+        // Update cart count bubble directly
+        const countBubble = document.querySelector('.cart-count-bubble span[aria-hidden]') ||
+                            document.querySelector('.cart-count-bubble span');
+        if (countBubble) {
+          countBubble.textContent = cart.item_count;
+        }
+      } catch (e) {
+        console.warn('[Drawer Recs] Cart event dispatch failed:', e);
+      }
+    }
+
+    async function addToCart(button) {
+      if (!button || button.disabled || button.classList.contains('is-loading')) return;
+
+      const variantId = normalizeVariantId(button.getAttribute('data-variant-id'));
+      if (!variantId) return;
+
+      button.classList.add('is-loading');
+      button.disabled = true;
+
+      try {
+        const response = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ items: [{ id: Number(variantId), quantity: 1 }] })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Add to cart failed (${response.status})`);
+        }
+
+        // Show success state
+        button.classList.remove('is-loading');
+        button.classList.add('is-added');
+        button.textContent = '✓ Added';
+
+        // Refresh the cart drawer to show updated items + count
+        await refreshCartDrawer();
+
+        // Refresh recommendations after a brief delay
+        scheduleRefresh(500);
+
+      } catch (error) {
+        console.error('[Drawer Recs] Add to cart error:', error);
+        button.classList.remove('is-loading');
+        button.textContent = 'Error';
+        button.disabled = false;
+      }
+    }
+
+    async function fetchRecommendations() {
+      const cartResponse = await fetch('/cart.js', { cache: 'no-store' });
       const cart = await cartResponse.json();
 
       if (!cart.items || cart.items.length === 0) {
@@ -114,41 +407,63 @@
       const response = await fetch(url);
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Failed drawer recommendations (${response.status}) ${errorBody}`);
+        throw new Error(`Failed recommendations (${response.status})`);
       }
 
       const data = await response.json();
-      const recommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
-
-      return recommendations.slice(0, Number(MAX_ITEMS) || 3);
+      const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+      return recs.slice(0, Number(MAX_ITEMS) || 4);
     }
 
-    function renderDrawerRecommendations(widget, recommendations) {
-      const parts = getWidgetParts(widget);
-      if (!parts) return;
-      const { loading, list, empty } = parts;
+    function showElement(el) { if (el) el.style.display = ''; }
+    function hideElement(el) { if (el) el.style.display = 'none'; }
 
-      loading.hidden = true;
+    function renderRecommendations(widget, recs) {
+      const loading = document.getElementById(`${WIDGET_ID}-loading`);
+      const list = document.getElementById(`${WIDGET_ID}-list`);
+      const empty = document.getElementById(`${WIDGET_ID}-empty`);
 
-      if (!recommendations || recommendations.length === 0) {
-        list.hidden = true;
-        empty.hidden = false;
+      // Always hide loading once we have results
+      hideElement(loading);
+
+      if (!recs || recs.length === 0) {
+        hideElement(list);
+        showElement(empty);
+        if (list) list.innerHTML = '';
+        widget.__recSignature = '';
         return;
       }
 
-      empty.hidden = true;
-      list.hidden = false;
-      list.innerHTML = recommendations.map((product) => {
+      hideElement(empty);
+      showElement(list);
+
+      const signature = recs.map(p => String(p.id || p.handle || '')).join('|');
+      if (widget.__recSignature === signature) return;
+      widget.__recSignature = signature;
+
+      list.innerHTML = recs.map(product => {
+        const handle = escapeHtml(product.handle);
+        const title = escapeHtml(product.title);
         const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
+        const variantId = getPreferredVariantId(product);
+        const disabledAttr = variantId ? '' : 'disabled';
+
         return `
-          <a class="drawer-recommendations__item" href="/products/${product.handle}">
-            ${imageUrl ? `<img src="${imageUrl}" alt="${product.title}" loading="lazy">` : '<div></div>'}
-            <div>
-              <p class="drawer-recommendations__item-title">${product.title}</p>
-              <p class="drawer-recommendations__item-price">$${Number(product.priceRange?.min || 0).toFixed(2)}</p>
+          <article class="dr-recs__card">
+            <div class="dr-recs__img-wrap">
+              ${imageUrl
+                ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" class="dr-recs__img" loading="lazy">`
+                : '<span class="dr-recs__img-placeholder"></span>'}
             </div>
-          </a>
+            <div class="dr-recs__info">
+              <p class="dr-recs__name">${title}</p>
+              <p class="dr-recs__price">${formatPriceRange(product.priceRange)}</p>
+              <div class="dr-recs__actions">
+                <button type="button" class="dr-recs__btn dr-recs__btn--add" data-variant-id="${variantId}" ${disabledAttr}>Add to cart</button>
+                <a href="/products/${handle}" class="dr-recs__btn dr-recs__btn--view">View</a>
+              </div>
+            </div>
+          </article>
         `;
       }).join('');
     }
@@ -159,10 +474,10 @@
 
     function scheduleRefresh(delayMs) {
       clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(refreshDrawerRecommendations, delayMs);
+      refreshTimer = setTimeout(doRefresh, delayMs);
     }
 
-    async function refreshDrawerRecommendations() {
+    async function doRefresh() {
       if (refreshInFlight) {
         refreshQueued = true;
         return;
@@ -175,88 +490,65 @@
         return;
       }
 
-      const parts = getWidgetParts(widget);
-      if (!parts) {
-        refreshInFlight = false;
-        return;
-      }
-      const { loading, list, empty } = parts;
+      const loading = document.getElementById(`${WIDGET_ID}-loading`);
+      const list = document.getElementById(`${WIDGET_ID}-list`);
+      const empty = document.getElementById(`${WIDGET_ID}-empty`);
+      const hasItems = list && list.style.display !== 'none' && list.children.length > 0;
 
-      loading.hidden = false;
-      list.hidden = true;
-      empty.hidden = true;
+      if (!hasItems) {
+        showElement(loading);
+        hideElement(list);  
+      }
+      hideElement(empty);
 
       try {
-        const recommendations = await fetchDrawerRecommendations();
-        renderDrawerRecommendations(widget, recommendations);
+        const recs = await fetchRecommendations();
+        renderRecommendations(widget, recs);
       } catch (error) {
-        console.error('[Drawer Recommendations]', error);
-        const latestParts = getWidgetParts(widget);
-        if (latestParts) {
-          latestParts.loading.hidden = true;
-          latestParts.list.hidden = true;
-          latestParts.empty.hidden = false;
-        }
+        console.error('[Drawer Recs]', error);
+        if (loading) hideElement(loading);
+        if (!hasItems && empty) showElement(empty);
       } finally {
         refreshInFlight = false;
         if (refreshQueued) {
           refreshQueued = false;
-          scheduleRefresh(120);
+          scheduleRefresh(150);
         }
       }
     }
 
-    function watchDrawerOpenState() {
+    function watchDrawerOpen() {
       const observer = new MutationObserver((mutations) => {
-        let shouldRefresh = false;
-
         for (const mutation of mutations) {
           const target = mutation.target;
-
-          if (isInsideWidget(target)) {
-            continue;
+          if (isInsideWidget(target)) continue;
+          if (mutation.type === 'attributes' && isElement(target) &&
+              target.hasAttribute('open') &&
+              (target.matches('cart-drawer-component') || target.closest('cart-drawer-component'))) {
+            scheduleRefresh(120);
+            return;
           }
-
-          if (mutation.type === 'attributes') {
-            if (isElement(target) && target.closest('cart-drawer-component')) {
-              shouldRefresh = true;
-              break;
-            }
-            continue;
-          }
-
-          if (mutation.type === 'childList') {
-            const inDrawerTree = isElement(target) && target.closest('cart-drawer-component');
-            if (!inDrawerTree) {
-              continue;
-            }
-
-            const addedInWidget = Array.from(mutation.addedNodes || []).some((node) => isInsideWidget(node));
-            if (addedInWidget) {
-              continue;
-            }
-
-            shouldRefresh = true;
-            break;
-          }
-        }
-
-        if (shouldRefresh) {
-          scheduleRefresh(120);
         }
       });
 
       observer.observe(document.body, {
-        childList: true,
-        subtree: true,
         attributes: true,
+        subtree: true,
         attributeFilter: ['open']
       });
     }
 
-    document.addEventListener('cart:updated', () => scheduleRefresh(80));
+    // Event listeners
+    document.addEventListener('cart:updated', () => scheduleRefresh(280));
     document.addEventListener('DOMContentLoaded', () => scheduleRefresh(150));
-    watchDrawerOpenState();
+    document.addEventListener('click', function (event) {
+      const btn = event.target.closest(`#${WIDGET_ID} .dr-recs__btn--add`);
+      if (!btn) return;
+      event.preventDefault();
+      addToCart(btn);
+    });
+
+    watchDrawerOpen();
     scheduleRefresh(250);
   })();
 </script>
@@ -277,9 +569,9 @@
       "id": "max_items",
       "label": "Max items",
       "min": 1,
-      "max": 6,
+      "max": 10,
       "step": 1,
-      "default": 3
+      "default": 6
     },
     {
       "type": "text",

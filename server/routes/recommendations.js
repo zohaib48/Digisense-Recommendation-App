@@ -1,15 +1,24 @@
 import express from 'express';
 import NodeCache from 'node-cache';
-import { createGraphQLClient } from '../utils/shopifyClient.js';
-import {
-  getProductsByFilters,
-  getProductDetails
-} from '../utils/productQueries.js';
 import { filterRecommendations } from '../utils/recommendationEngine.js';
 import { resolveSessionValidation } from '../utils/sessionResolver.js';
+import { getProductById, getFilteredProducts } from '../db/productStore.js';
+import { getSettings } from '../db/settingsStore.js';
 
 const router = express.Router();
-const cache = new NodeCache({ stdTTL: process.env.CACHE_TTL || 300 });
+
+// Recommendation result cache — 5 minute TTL
+const recCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
+const DEFAULT_MAX_RECOMMENDATIONS = parseInt(process.env.MAX_RECOMMENDATIONS, 10) || 8;
+
+function toBoundedPositiveInteger(value, fallback, min = 1, max = 24) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
+}
 
 function isAppProxyRequest(req) {
   return Boolean(
@@ -29,6 +38,15 @@ function sendProxyFallback(res, meta = {}) {
   });
 }
 
+function resolveShop(req, validation) {
+  // For app proxy requests, the shop comes from the query string
+  if (req.query.shop) {
+    return req.query.shop;
+  }
+  // Otherwise use the session
+  return validation?.session?.shop || null;
+}
+
 function sendSessionError(req, res, validation) {
   if (isAppProxyRequest(req)) {
     return sendProxyFallback(res, {
@@ -43,6 +61,13 @@ function sendSessionError(req, res, validation) {
       error: true,
       message: `Session is missing required scopes: ${validation.missingScopes.join(', ')}. Re-authenticate from Shopify Admin.`,
       missingScopes: validation.missingScopes,
+    });
+  }
+
+  if (validation.reason === 'unauthorized') {
+    return res.status(401).json({
+      error: true,
+      message: 'Stored session was revoked by Shopify. Re-open the app from Shopify Admin to re-authenticate.',
     });
   }
 
@@ -84,10 +109,15 @@ function parseItemsFromQuery(rawItems) {
   }
 }
 
-async function buildCartRecommendations(client, items) {
-  // Aggregate recommendations from all cart items
+async function buildCartRecommendations(shop, items, settings) {
   const allRecommendations = [];
   const processedProducts = new Set();
+  const requiresSize = settings.sizeMatchStyle !== 'none';
+  const cartMaxRecommendations = toBoundedPositiveInteger(
+    settings.cartMaxRecommendations,
+    DEFAULT_MAX_RECOMMENDATIONS
+  );
+  const perItemMaxRecommendations = Math.max(4, cartMaxRecommendations);
 
   for (const item of items) {
     const rawProductId = item.product_id ?? item.productId ?? item.id ?? item.product?.id;
@@ -95,38 +125,51 @@ async function buildCartRecommendations(client, items) {
       ? ''
       : String(rawProductId).trim();
 
-    // Extract size and price from cart item
     const size = item.properties?.Size || item.variant_title?.split('/')[0]?.trim();
     const price = parseFloat(item.price);
 
-    if (!normalizedProductId || !size || !price || processedProducts.has(normalizedProductId)) {
+    if (!normalizedProductId || !Number.isFinite(price) || processedProducts.has(normalizedProductId)) {
+      continue;
+    }
+
+    if (requiresSize && !size) {
       continue;
     }
 
     processedProducts.add(normalizedProductId);
 
-    // Get product details
-    const product = await getProductDetails(client, normalizedProductId);
+    // Get product details from local DB
+    const product = await getProductById(normalizedProductId, shop);
     if (!product) continue;
 
-    // Pre-calculate all product IDs in the cart to exclude them
+    // All cart product IDs to exclude
     const allCartProductIds = items.map(i => {
       const id = i.product_id ?? i.productId ?? i.id ?? i.product?.id;
       return id === null || id === undefined ? '' : String(id).trim();
     }).filter(Boolean);
 
-    // Get recommendations for this item
-    const products = await getProductsByFilters(client, {
-      productType: product.productType,
+    // Build filters for DB query
+    const queryFilters = {
       excludeProductId: allCartProductIds
-    });
+    };
+
+    if (settings.filterByProductType) {
+      queryFilters.productType = product.productType;
+    }
+    if (settings.filterByCategoryTags) {
+      queryFilters.tags = product.tags;
+    }
+
+    // Query local DB instead of Shopify API
+    const products = await getFilteredProducts(shop, queryFilters);
 
     const recs = filterRecommendations(products, {
-      targetSize: size,
+      targetSize: size || '',
       targetPrice: price,
-      priceRangePercentage: parseInt(process.env.PRICE_RANGE_PERCENTAGE) || 20,
-      maxResults: 4,
-      currentProductId: normalizedProductId
+      priceRangePercentage: settings.priceRangePercentage,
+      maxResults: perItemMaxRecommendations,
+      currentProductId: normalizedProductId,
+      sizeMatchStyle: settings.sizeMatchStyle
     });
 
     allRecommendations.push(...recs);
@@ -136,7 +179,7 @@ async function buildCartRecommendations(client, items) {
   const uniqueRecommendations = Array.from(
     new Map(allRecommendations.map(item => [item.id, item])).values()
   ).sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, parseInt(process.env.MAX_RECOMMENDATIONS) || 8);
+    .slice(0, cartMaxRecommendations);
 
   return {
     recommendations: uniqueRecommendations,
@@ -146,53 +189,74 @@ async function buildCartRecommendations(client, items) {
 
 /**
  * GET /api/recommendations/product/:productId
- * Get recommendations for a specific product based on size and price
+ * Get recommendations for a specific product based on size and price.
+ * Now queries the LOCAL PostgreSQL database — zero Shopify API calls.
  */
 router.get('/product/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const { size, price } = req.query;
     const normalizedPrice = Number.parseFloat(price);
+    const normalizedSize = typeof size === 'string' ? size.trim() : '';
 
-    // Validate required parameters
-    if (!size || Number.isNaN(normalizedPrice)) {
+    if (Number.isNaN(normalizedPrice)) {
       if (isAppProxyRequest(req)) {
         return sendProxyFallback(res, {
-          message: 'Invalid size/price input for product recommendations.',
+          message: 'Invalid price input for product recommendations.',
           reason: 'invalid_query',
         });
       }
       return res.status(400).json({
         error: true,
-        message: 'Valid size and price query parameters are required'
+        message: 'Valid price query parameter is required'
       });
     }
 
-    // Check cache
-    // const cacheKey = `product_rec_${productId}_${size}_${price}`;
-    // const cached = cache.get(cacheKey);
-    // if (cached) {
-    //   return res.json({ recommendations: cached, cached: true });
-    // }
+    // Check recommendation cache
+    const cacheKey = `product_rec_${productId}_${normalizedSize}_${normalizedPrice}`;
+    const cached = recCache.get(cacheKey);
+    if (cached) {
+      return res.json({ recommendations: cached.recommendations, cached: true, filters: cached.filters });
+    }
 
     console.log(`📥 Recommendations Request: ${productId} | size: ${size} | price: ${price}`);
 
-    // Get Shopify session
+    // Resolve shop from session (we still need the session to know which shop we're serving)
     const validation = await resolveSessionValidation();
     if (!validation.valid) {
       console.log(`❌ Request blocked: invalid session (${validation.reason})`);
       return sendSessionError(req, res, validation);
     }
 
-    // Create GraphQL client
-    const client = createGraphQLClient(validation.session);
+    const shop = resolveShop(req, validation);
 
-    // Get current product details
-    console.log(`🔍 Looking up product: ${productId}`);
-    const currentProduct = await getProductDetails(client, productId);
+    // Fetch merchant settings from cache/DB (no Shopify API call)
+    const settings = await getSettings(shop);
+    const requiresSize = settings.sizeMatchStyle !== 'none';
+    const productPageMaxRecommendations = toBoundedPositiveInteger(
+      settings.productPageMaxRecommendations,
+      DEFAULT_MAX_RECOMMENDATIONS
+    );
+
+    if (requiresSize && !normalizedSize) {
+      if (isAppProxyRequest(req)) {
+        return sendProxyFallback(res, {
+          message: 'Size is required for the selected recommendation mode.',
+          reason: 'missing_size',
+        });
+      }
+      return res.status(400).json({
+        error: true,
+        message: 'Valid size query parameter is required for the current size filter mode'
+      });
+    }
+
+    // Get current product from LOCAL DB (not Shopify API)
+    console.log(`🔍 Looking up product in DB: ${productId}`);
+    const currentProduct = await getProductById(productId, shop);
 
     if (!currentProduct) {
-      console.log(`❌ Product ${productId} not found in Shopify`);
+      console.log(`❌ Product ${productId} not found in DB`);
       if (isAppProxyRequest(req)) {
         return sendProxyFallback(res, {
           message: 'Product not found for recommendations.',
@@ -205,38 +269,50 @@ router.get('/product/:productId', async (req, res) => {
       });
     }
 
-    // Get all products from store
-    const allProducts = await getProductsByFilters(client, {
-      productType: currentProduct.productType,
+    // Build filters for DB query
+    const queryFilters = {
       excludeProductId: productId
-    });
+    };
+    if (settings.filterByProductType) {
+      queryFilters.productType = currentProduct.productType;
+    }
+    if (settings.filterByCategoryTags) {
+      queryFilters.tags = currentProduct.tags;
+    }
 
-    // Filter recommendations based on size and price
+    // Get filtered products from LOCAL DB (not Shopify API)
+    const allProducts = await getFilteredProducts(shop, queryFilters);
+
+    // Run the recommendation engine (same logic as before)
     const recommendations = filterRecommendations(allProducts, {
-      targetSize: size,
+      targetSize: normalizedSize,
       targetPrice: normalizedPrice,
-      priceRangePercentage: parseInt(process.env.PRICE_RANGE_PERCENTAGE) || 20,
-      maxResults: parseInt(process.env.MAX_RECOMMENDATIONS) || 8,
-      currentProductId: productId
+      priceRangePercentage: settings.priceRangePercentage,
+      maxResults: productPageMaxRecommendations,
+      currentProductId: productId,
+      sizeMatchStyle: settings.sizeMatchStyle
     });
 
-    // Cache results
-    // cache.set(cacheKey, recommendations);
+    // Cache the result
+    const result = {
+      recommendations,
+      filters: {
+        size: normalizedSize,
+        price: normalizedPrice,
+        productType: currentProduct.productType
+      }
+    };
+    recCache.set(cacheKey, result);
 
     res.json({
       recommendations,
       cached: false,
-      filters: {
-        size,
-        price: normalizedPrice,
-        productType: currentProduct.productType
-      }
+      filters: result.filters
     });
 
   } catch (error) {
     console.error('CRITICAL Recommendation Error:', error);
 
-    // Log to file for later inspection
     try {
       import('fs').then(fs => {
         fs.promises.appendFile('API_CRASH.log', `[${new Date().toISOString()}] ${error.message}\n${error.stack}\n\n`);
@@ -271,7 +347,6 @@ router.get('/product/:productId', async (req, res) => {
 /**
  * GET /api/recommendations/cart
  * Get recommendations for items in cart using query param.
- * Expected: ?items=[{...}]
  */
 router.get('/cart', async (req, res) => {
   try {
@@ -295,8 +370,9 @@ router.get('/cart', async (req, res) => {
       return sendSessionError(req, res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const result = await buildCartRecommendations(client, items);
+    const shop = resolveShop(req, validation);
+    const settings = await getSettings(shop);
+    const result = await buildCartRecommendations(shop, items, settings);
 
     return res.json({
       recommendations: result.recommendations,
@@ -321,7 +397,7 @@ router.get('/cart', async (req, res) => {
 
 /**
  * POST /api/recommendations/cart
- * Get recommendations for items in cart
+ * Get recommendations for items in cart.
  */
 router.post('/cart', async (req, res) => {
   try {
@@ -341,20 +417,23 @@ router.post('/cart', async (req, res) => {
     }
 
     // Check cache
-    // const cacheKey = `cart_rec_${JSON.stringify(items.map(i => i.variant_id).sort())}`;
-    // const cached = cache.get(cacheKey);
-    // if (cached) {
-    //   return res.json({ recommendations: cached, cached: true });
-    // }
+    const cacheKey = `cart_rec_${JSON.stringify(items.map(i => i.variant_id).sort())}`;
+    const cached = recCache.get(cacheKey);
+    if (cached) {
+      return res.json({ recommendations: cached.recommendations, cached: true, cartItemsProcessed: cached.cartItemsProcessed });
+    }
 
-    // Get Shopify session
     const validation = await resolveSessionValidation();
     if (!validation.valid) {
       return sendSessionError(req, res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const result = await buildCartRecommendations(client, items);
+    const shop = resolveShop(req, validation);
+    const settings = await getSettings(shop);
+    const result = await buildCartRecommendations(shop, items, settings);
+
+    // Cache it
+    recCache.set(cacheKey, result);
 
     res.json({
       recommendations: result.recommendations,
@@ -395,7 +474,7 @@ router.post('/cart', async (req, res) => {
 
 /**
  * GET /api/recommendations/similar/:productId
- * Get similar products (alternative approach using tags and collections)
+ * Get similar products based on tags and product type.
  */
 router.get('/similar/:productId', async (req, res) => {
   try {
@@ -407,8 +486,8 @@ router.get('/similar/:productId', async (req, res) => {
       return sendSessionError(req, res, validation);
     }
 
-    const client = createGraphQLClient(validation.session);
-    const product = await getProductDetails(client, productId);
+    const shop = resolveShop(req, validation);
+    const product = await getProductById(productId, shop);
 
     if (!product) {
       if (isAppProxyRequest(req)) {
@@ -423,8 +502,8 @@ router.get('/similar/:productId', async (req, res) => {
       });
     }
 
-    // Get products with matching tags
-    const similar = await getProductsByFilters(client, {
+    // Query DB for similar products
+    const similar = await getFilteredProducts(shop, {
       tags: product.tags,
       productType: product.productType,
       excludeProductId: productId,
@@ -456,11 +535,11 @@ router.get('/similar/:productId', async (req, res) => {
 
 /**
  * DELETE /api/recommendations/cache
- * Clear recommendation cache
+ * Clear recommendation cache.
  */
 router.delete('/cache', (req, res) => {
   try {
-    cache.flushAll();
+    recCache.flushAll();
     res.json({
       success: true,
       message: 'Cache cleared successfully'

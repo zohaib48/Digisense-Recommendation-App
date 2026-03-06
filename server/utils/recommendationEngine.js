@@ -15,17 +15,21 @@ export function filterRecommendations(products, criteria) {
     targetPrice,
     priceRangePercentage = 20,
     maxResults = 8,
-    currentProductId
+    currentProductId,
+    sizeMatchStyle = 'exact_or_similar'
   } = criteria;
+  const normalizedSizeMatchStyle = sizeMatchStyle === 'none' ? 'none' : (
+    sizeMatchStyle === 'exact' ? 'exact' : 'exact_or_similar'
+  );
 
   // Calculate price range
   const priceMin = targetPrice * (1 - priceRangePercentage / 100);
   const priceMax = targetPrice * (1 + priceRangePercentage / 100);
 
   console.log(`\n🎯 Filtering recommendations:`);
-  console.log(`   Target Size: ${targetSize}`);
+  console.log(`   Target Size: ${targetSize || 'N/A'} (Match: ${normalizedSizeMatchStyle})`);
   console.log(`   Target Price: $${targetPrice}`);
-  console.log(`   Price Range: $${priceMin.toFixed(2)} - $${priceMax.toFixed(2)}`);
+  console.log(`   Price Range: $${priceMin.toFixed(2)} - $${priceMax.toFixed(2)} (±${priceRangePercentage}%)`);
   console.log(`   Products to filter: ${products.length}`);
 
   // Filter and score products
@@ -41,7 +45,8 @@ export function filterRecommendations(products, criteria) {
         product.variants,
         targetSize,
         priceMin,
-        priceMax
+        priceMax,
+        normalizedSizeMatchStyle
       );
 
       if (matchingVariants.length === 0) {
@@ -62,7 +67,8 @@ export function filterRecommendations(products, criteria) {
         reason: generateRecommendationReason(
           matchingVariants,
           targetSize,
-          targetPrice
+          targetPrice,
+          normalizedSizeMatchStyle
         )
       };
     })
@@ -127,9 +133,13 @@ function balanceRecommendationsByPrice(recommendations, targetPrice, maxResults)
  * @param {string} targetSize - Target size value
  * @param {number} priceMin - Minimum price
  * @param {number} priceMax - Maximum price
+ * @param {string} sizeMatchStyle - 'exact', 'exact_or_similar', or 'none'
  * @returns {Array} Matching variants
  */
-function findMatchingVariants(variants, targetSize, priceMin, priceMax) {
+function findMatchingVariants(variants, targetSize, priceMin, priceMax, sizeMatchStyle) {
+  const targetSizeLower = String(targetSize || '').toLowerCase().trim();
+  const shouldFilterBySize = sizeMatchStyle !== 'none';
+
   return variants.filter(variant => {
     // Check if variant is available
     if (!variant.availableForSale) {
@@ -141,11 +151,18 @@ function findMatchingVariants(variants, targetSize, priceMin, priceMax) {
       return false;
     }
 
+    if (!shouldFilterBySize) {
+      return true;
+    }
+
+    if (!targetSizeLower) {
+      return false;
+    }
+
     // Check size match (case-insensitive, flexible matching)
     const hasMatchingSize = variant.selectedOptions.some(option => {
       const optionName = option.name.toLowerCase();
       const optionValue = option.value.toLowerCase();
-      const targetSizeLower = targetSize.toLowerCase();
 
       // Check if this is a size option
       if (!['size', 'sizes'].includes(optionName)) {
@@ -158,7 +175,7 @@ function findMatchingVariants(variants, targetSize, priceMin, priceMax) {
       }
 
       // Partial match for complex sizes (e.g., "M (38-40)" matches "M")
-      if (optionValue.includes(targetSizeLower) || targetSizeLower.includes(optionValue)) {
+      if (sizeMatchStyle === 'exact_or_similar' && (optionValue.includes(targetSizeLower) || targetSizeLower.includes(optionValue))) {
         return true;
       }
 
@@ -190,20 +207,22 @@ function calculateRelevanceScore(matchingVariants, targetPrice, targetSize) {
   const priceScore = Math.max(0, 25 - (priceDifference / targetPrice) * 25);
   score += priceScore;
 
-  // Availability score (max 15 points)
-  const availableCount = matchingVariants.filter(v => v.availableForSale).length;
-  const availabilityScore = (availableCount / matchingVariants.length) * 15;
-  score += availabilityScore;
+  // All matchingVariants are already available (filtered in findMatchingVariants),
+  // so award the full availability bonus directly.
+  score += 15;
 
   // Exact size match bonus (10 points)
-  const hasExactSizeMatch = matchingVariants.some(variant =>
-    variant.selectedOptions.some(opt =>
-      opt.name.toLowerCase() === 'size' &&
-      opt.value.toLowerCase() === targetSize.toLowerCase()
-    )
-  );
-  if (hasExactSizeMatch) {
-    score += 10;
+  if (targetSize) {
+    const targetSizeLower = String(targetSize).toLowerCase();
+    const hasExactSizeMatch = matchingVariants.some(variant =>
+      variant.selectedOptions.some(opt =>
+        opt.name.toLowerCase() === 'size' &&
+        opt.value.toLowerCase() === targetSizeLower
+      )
+    );
+    if (hasExactSizeMatch) {
+      score += 10;
+    }
   }
 
   return Math.round(score);
@@ -214,15 +233,18 @@ function calculateRelevanceScore(matchingVariants, targetPrice, targetSize) {
  * @param {Array} matchingVariants - Matching variants
  * @param {string} targetSize - Target size
  * @param {number} targetPrice - Target price
+ * @param {string} sizeMatchStyle - Size matching mode
  * @returns {string} Recommendation reason
  */
-function generateRecommendationReason(matchingVariants, targetSize, targetPrice) {
+function generateRecommendationReason(matchingVariants, targetSize, targetPrice, sizeMatchStyle) {
   const avgPrice = matchingVariants.reduce((sum, v) => sum + v.price, 0) / matchingVariants.length;
   const priceDiff = avgPrice - targetPrice;
   const priceDiffPercentage = targetPrice > 0 ? (priceDiff / targetPrice) * 100 : 0;
-  
-  let reason = `Available in size ${targetSize}`;
-  
+
+  let reason = sizeMatchStyle === 'none' || !targetSize
+    ? 'Recommended by price'
+    : `Available in size ${targetSize}`;
+
   if (Math.abs(priceDiffPercentage) < 3) {
     reason += `, same price range`;
   } else if (priceDiff < 0) {

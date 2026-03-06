@@ -8,9 +8,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import recommendationsRouter from './routes/recommendations.js';
 import productsRouter from './routes/products.js';
+import settingsRouter from './routes/settings.js';
+import syncRouter from './routes/sync.js';
+import webhooksRouter, { verifyWebhookHmac } from './routes/webhooks.js';
 import { createGraphQLClient } from './utils/shopifyClient.js';
 import { syncApiUrlMetafield } from './utils/metafieldUtils.js';
 import { ensureSessionInstance, validateSession } from './utils/sessionUtils.js';
+import { syncAllProducts, syncSettings } from './utils/syncProducts.js';
+import pool from './db/pool.js';
 
 dotenv.config();
 
@@ -20,6 +25,7 @@ const SESSION_FILE = path.join(__dirname, '..', '.session-dev.json');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+global.sessionRevoked = false;
 
 function getPublicAppUrl() {
   const host = (process.env.SHOPIFY_HOST || '').replace(/^https?:\/\//, '');
@@ -32,6 +38,45 @@ function getFrontendBaseUrl() {
     return configuredUrl.replace(/\/$/, '');
   }
   return '';
+}
+
+function isUnauthorizedError(error) {
+  return (
+    error?.statusCode === 401 ||
+    error?.code === 401 ||
+    error?.response?.code === 401
+  );
+}
+
+async function clearPersistedSession() {
+  try {
+    await fs.unlink(SESSION_FILE);
+    console.log('🧹 Cleared persisted session file');
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error('Failed to clear persisted session file:', error.message);
+    }
+  }
+}
+
+async function verifySessionAuthorization(session) {
+  try {
+    const client = createGraphQLClient(session);
+    await client.query({
+      data: {
+        query: `query AuthProbe { shop { id } }`,
+      },
+    });
+    return true;
+  } catch (error) {
+    if (isUnauthorizedError(error)) {
+      return false;
+    }
+
+    // Non-auth failures can be transient (network/tunnel). Keep session usable.
+    console.warn('⚠️  Could not verify session authorization with Shopify:', error.message);
+    return true;
+  }
 }
 
 // Initialize Shopify API
@@ -64,7 +109,7 @@ app.use((req, res, next) => {
   res.header(
     'Access-Control-Allow-Headers',
     req.headers['access-control-request-headers'] ||
-      'Content-Type, Authorization, ngrok-skip-browser-warning, Bypass-Tunnel-Reminder, bypass-tunnel-reminder'
+    'Content-Type, Authorization, ngrok-skip-browser-warning, Bypass-Tunnel-Reminder, bypass-tunnel-reminder'
   );
 
   return res.status(204).end();
@@ -93,6 +138,23 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Enable pre-flight for all routes with same config
 
+// ⚡ Webhook routes MUST be mounted BEFORE express.json()
+// because we need the raw body for HMAC signature verification.
+app.use('/webhooks', express.json({
+  verify: (req, _res, buf) => {
+    // Store raw body for HMAC verification
+    req.rawBody = buf.toString('utf8');
+  }
+}), (req, res, next) => {
+  // Verify HMAC signature on all webhook requests
+  const hmac = req.headers['x-shopify-hmac-sha256'];
+  if (!verifyWebhookHmac(req.rawBody, hmac)) {
+    console.error('❌ Webhook HMAC verification failed');
+    return res.status(401).send('Unauthorized');
+  }
+  next();
+}, webhooksRouter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -112,6 +174,14 @@ app.get('/api/config', (req, res) => {
 app.get('/', (req, res) => {
   const shop = req.query.shop || (global.activeSession ? global.activeSession.shop : '');
   const host = req.query.host;
+  const activeValidation = validateSession(global.activeSession);
+
+  if ((global.sessionRevoked || !activeValidation.valid) && shop) {
+    const authUrl = new URL('/auth', `${req.protocol}://${req.get('host')}`);
+    authUrl.searchParams.set('shop', String(shop));
+    authUrl.searchParams.set('embedded', '1');
+    return res.redirect(authUrl.toString());
+  }
 
   // In development, redirect only when an explicit frontend URL is configured.
   if (process.env.NODE_ENV === 'development' && shop && host) {
@@ -176,7 +246,7 @@ app.get('/auth', async (req, res) => {
       return res.status(400).send('Missing shop parameter');
     }
 
-    const authRoute = await shopify.auth.begin({
+    const authResponse = await shopify.auth.begin({
       shop,
       callbackPath: '/auth/callback',
       isOnline: false,
@@ -184,27 +254,24 @@ app.get('/auth', async (req, res) => {
       rawResponse: res,
     });
 
-    // Check if we are in an iframe
-    if (req.query.embedded === '1' || req.headers['sec-fetch-dest'] === 'iframe') {
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <script>
-              window.top.location.href = "${authRoute}";
-            </script>
-          </head>
-          <body>
-            <p>Redirecting to Shopify for authentication...</p>
-            <a href="${authRoute}" target="_top">Click here if not redirected</a>
-          </body>
-        </html>
-      `);
+    // In Node adapter, auth.begin writes redirect headers/body directly.
+    if (res.headersSent) {
+      return;
     }
 
-    if (!res.headersSent) {
-      res.redirect(authRoute);
+    // Fallback for adapters that may return a redirect URL instead.
+    if (typeof authResponse === 'string') {
+      return res.redirect(authResponse);
     }
+
+    const locationHeader =
+      authResponse?.headers?.Location ||
+      authResponse?.headers?.location;
+    if (locationHeader) {
+      return res.redirect(locationHeader);
+    }
+
+    return res.status(500).send('Failed to begin OAuth flow.');
   } catch (error) {
     console.error('Auth error:', error);
     if (!res.headersSent) {
@@ -236,7 +303,17 @@ async function loadSession() {
       return null;
     }
 
+    const authorized = await verifySessionAuthorization(validation.session);
+    if (!authorized) {
+      global.activeSession = null;
+      global.sessionRevoked = true;
+      console.log('⚠️  Stored session token is no longer authorized by Shopify. Re-authentication is required.');
+      await clearPersistedSession();
+      return null;
+    }
+
     global.activeSession = validation.session;
+    global.sessionRevoked = false;
     console.log('✅ Loaded valid session from file');
 
     // Sync API URL to storefront metafields
@@ -258,6 +335,25 @@ async function loadSession() {
   }
 }
 
+function startBackgroundSync(session, reason = 'startup') {
+  if (!session) return;
+
+  const shop = session.shop;
+  const client = createGraphQLClient(session);
+
+  console.log(`🔄 Starting background sync (${reason}) for ${shop}...`);
+
+  // Sync settings first (fast)
+  syncSettings(client, shop).catch((err) =>
+    console.error(`⚠️  Background settings sync failed (${reason}):`, err.message)
+  );
+
+  // Sync products in parallel (may take longer on larger catalogs)
+  syncAllProducts(client, shop).catch((err) =>
+    console.error(`⚠️  Background product sync failed (${reason}):`, err.message)
+  );
+}
+
 // ... (existing routes)
 
 // Auth Callback
@@ -274,12 +370,14 @@ app.get('/auth/callback', async (req, res) => {
     const validation = validateSession(session);
     if (!validation.valid) {
       global.activeSession = null;
+      global.sessionRevoked = true;
       return res.status(401).send(
         `Session is missing required permissions (${validation.missingScopes.join(', ')}). Please reinstall or re-authenticate the app.`
       );
     }
 
     global.activeSession = validation.session;
+    global.sessionRevoked = false;
 
     // Persist to file
     await fs.writeFile(SESSION_FILE, JSON.stringify(validation.session, null, 2));
@@ -293,6 +391,9 @@ app.get('/auth/callback', async (req, res) => {
         const client = createGraphQLClient(validation.session);
         await syncApiUrlMetafield(client, apiUrl);
       }
+
+      // Kick off initial DB sync right after successful install/auth.
+      startBackgroundSync(validation.session, 'auth_callback');
 
       const params = new URLSearchParams({ shop: validation.session.shop });
       if (host) {
@@ -311,6 +412,8 @@ app.get('/auth/callback', async (req, res) => {
 // API Routes
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/sync', syncRouter);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -321,19 +424,36 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Auto-run database migration on startup
+async function runMigration() {
+  try {
+    const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+    const sql = await fs.readFile(schemaPath, 'utf8');
+    await pool.query(sql);
+    console.log('✅ Database migration completed');
+  } catch (error) {
+    console.error('❌ Database migration failed:', error.message);
+    console.error('   Make sure PostgreSQL is running and DATABASE_URL is set in .env');
+  }
+}
+
 // Start server
 app.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 Auth URL: http://localhost:${PORT}/auth`);
 
+  // Run DB migration
+  await runMigration();
+
   // Try loading session on start
   try {
     const session = await loadSession();
     if (session) {
       console.log(`✅ Active session for: ${session.shop}`);
+      startBackgroundSync(session, 'startup');
     } else {
-      console.log('⚠️  No active session found on startup.');
+      console.log('⚠️  No active session found on startup. Products will sync after authentication.');
     }
   } catch (err) {
     console.error('❌ Failed to load session during startup:', err);

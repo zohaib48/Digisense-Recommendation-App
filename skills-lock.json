@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "shopify-development": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "370a326a1a31504b3f1537372fc5c16ed7cfa4070815991b9b31a318aa1444f3"
+    }
+  }
+}

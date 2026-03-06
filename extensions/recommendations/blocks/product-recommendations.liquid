@@ -8,57 +8,288 @@
     <h2 class="product-recommendations__title">{{ section.settings.heading }}</h2>
   </div>
 
-  <div class="product-recommendations__loading" id="recommendations-loading">
-    <div class="product-recommendations__grid product-recommendations__grid--loading">
-      {% for i in (1..4) %}
-        <div class="recommendation-card skeleton-card">
-          <div class="skeleton-image"></div>
-          <div class="skeleton-badge"></div>
-          <div class="skeleton-title"></div>
-          <div class="skeleton-price"></div>
-          <div class="skeleton-reason"></div>
-        </div>
-      {% endfor %}
+  <div class="product-recommendations__loading" id="recommendations-loading-{{ section.id }}">
+    <div class="product-recommendations__carousel product-recommendations__carousel--loading">
+      <div class="product-recommendations__track">
+        {% for i in (1..4) %}
+          <div class="recommendation-card skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-badge"></div>
+            <div class="skeleton-title"></div>
+            <div class="skeleton-price"></div>
+            <div class="skeleton-reason"></div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 
-  <div class="product-recommendations__container" id="recommendations-container" style="display: none;">
-    <div class="product-recommendations__grid" id="recommendations-grid">
-      <!-- Recommendations will be inserted here -->
+  <div
+    class="product-recommendations__container"
+    id="recommendations-container-{{ section.id }}"
+    style="display: none;"
+  >
+    <div class="product-recommendations__carousel">
+      <button
+        type="button"
+        class="product-recommendations__arrow product-recommendations__arrow--prev"
+        id="recommendations-prev-{{ section.id }}"
+        aria-label="Show previous recommendations"
+        hidden
+      >
+        <span aria-hidden="true">&#8249;</span>
+      </button>
+
+      <div class="product-recommendations__track" id="recommendations-track-{{ section.id }}">
+        <!-- Recommendations will be inserted here -->
+      </div>
+
+      <button
+        type="button"
+        class="product-recommendations__arrow product-recommendations__arrow--next"
+        id="recommendations-next-{{ section.id }}"
+        aria-label="Show next recommendations"
+        hidden
+      >
+        <span aria-hidden="true">&#8250;</span>
+      </button>
     </div>
   </div>
 
-  <div class="product-recommendations__empty" id="recommendations-empty" style="display: none;">
+  <div class="product-recommendations__empty" id="recommendations-empty-{{ section.id }}" style="display: none;">
     <p>{{ section.settings.empty_message }}</p>
   </div>
 </div>
 
 <style>
   .product-recommendations {
-    margin: 3rem 0;
-    padding: 2rem 0;
+    --rec-border: rgba(20, 31, 27, 0.12);
+    --rec-title: #111b17;
+    --rec-subtle: #4f6159;
+    --rec-accent: #17654f;
+    --rec-badge-bg: #e7f5ee;
+    --rec-gap: 1rem;
+    --rec-visible-cards: 5;
+    margin: 3.5rem 0;
+    padding: 2rem 1.5rem;
+    background: transparent;
+    border-radius: 0;
+    border: 0;
+    font-family: 'Avenir Next', 'Manrope', 'Helvetica Neue', sans-serif;
   }
 
   .product-recommendations__header {
-    text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.25rem;
+    text-align: left;
   }
 
   .product-recommendations__title {
-    font-size: 1.5rem;
-    font-weight: 600;
     margin: 0;
+    color: var(--rec-title);
+    font-size: clamp(1.35rem, 2vw, 1.9rem);
+    font-weight: 650;
+    letter-spacing: -0.01em;
   }
 
   .product-recommendations__loading {
-    text-align: center;
-    padding: 3rem 0;
+    padding-top: 0.25rem;
   }
 
-  /* Skeleton Loader Styles */
+  .product-recommendations__carousel {
+    position: relative;
+    width: 100%;
+    max-width: 1420px;
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding-inline: 2.4rem;
+  }
+
+  .product-recommendations__track {
+    display: flex;
+    gap: var(--rec-gap);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding: 0.25rem 0 0.5rem;
+    scroll-padding-inline: 0.25rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+  }
+
+  .product-recommendations__track.is-balanced {
+    justify-content: space-evenly;
+  }
+
+  .product-recommendations__track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .product-recommendations__arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.35rem;
+    height: 2.35rem;
+    border: 1px solid rgba(17, 27, 23, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #162c24;
+    cursor: pointer;
+    z-index: 2;
+    box-shadow: 0 10px 24px rgba(15, 24, 21, 0.16);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  }
+
+  .product-recommendations__arrow span {
+    font-size: 1.55rem;
+    line-height: 1;
+  }
+
+  .product-recommendations__arrow:hover:not(:disabled) {
+    transform: translateY(-50%) scale(1.04);
+    box-shadow: 0 12px 26px rgba(15, 24, 21, 0.2);
+  }
+
+  .product-recommendations__arrow:disabled {
+    opacity: 0.35;
+    cursor: default;
+    box-shadow: none;
+  }
+
+  .product-recommendations__arrow--prev {
+    left: 0;
+  }
+
+  .product-recommendations__arrow--next {
+    right: 0;
+  }
+
+  .recommendation-card {
+    position: relative;
+    display: flex;
+    flex: 0 0 max(190px, calc((100% - (var(--rec-gap) * (var(--rec-visible-cards) - 1))) / var(--rec-visible-cards)));
+    max-width: max(190px, calc((100% - (var(--rec-gap) * (var(--rec-visible-cards) - 1))) / var(--rec-visible-cards)));
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid var(--rec-border);
+    border-radius: 16px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    scroll-snap-align: start;
+    box-shadow: 0 10px 22px rgba(17, 27, 23, 0.06);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    min-height: 380px;
+  }
+
+  .recommendation-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(23, 101, 79, 0.26);
+    box-shadow: 0 16px 28px rgba(17, 27, 23, 0.15);
+  }
+
+  .recommendation-card__image-wrap {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    background: #eef2f0;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .recommendation-card__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+
+  .recommendation-card__placeholder {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: linear-gradient(135deg, rgba(44, 88, 74, 0.16), rgba(20, 62, 50, 0.08)), #e8edeb;
+  }
+
+  .recommendation-card__badge {
+    position: absolute;
+    top: 0.7rem;
+    left: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.6rem;
+    padding: 0.15rem 0.65rem;
+    border-radius: 999px;
+    background: var(--rec-badge-bg);
+    color: #115540;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .recommendation-card__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.75rem 0.85rem 0.85rem;
+  }
+
+  .recommendation-card__title {
+    margin: 0;
+    color: var(--rec-title);
+    font-size: 0.92rem;
+    font-weight: 630;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .recommendation-card__price {
+    color: #0f6248;
+    font-size: 1.02rem;
+    font-weight: 720;
+    letter-spacing: -0.01em;
+  }
+
+  .recommendation-card__reason {
+    margin: 0;
+    color: var(--rec-subtle);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .recommendation-card__cta {
+    margin-top: auto;
+    padding-top: 0.3rem;
+    color: #0f4938;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .product-recommendations__empty {
+    text-align: center;
+    padding: 1.35rem 0.4rem 0.25rem;
+    color: #596a63;
+    font-size: 0.94rem;
+  }
+
   .skeleton-card {
-    border-color: #f0f0f0;
     pointer-events: none;
+  }
+
+  .product-recommendations__carousel--loading .recommendation-card {
+    min-height: 100%;
   }
 
   .skeleton-image,
@@ -66,251 +297,391 @@
   .skeleton-title,
   .skeleton-price,
   .skeleton-reason {
-    background: #eee;
-    background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
-    background-size: 200% 100%;
-    animation: 1.5s pulse linear infinite;
-    border-radius: 4px;
+    background: linear-gradient(110deg, #edf1ef 8%, #f8fbfa 18%, #edf1ef 33%);
+    background-size: 210% 100%;
+    animation: productRecPulse 1.2s linear infinite;
+    border-radius: 8px;
   }
 
   .skeleton-image {
     width: 100%;
-    aspect-ratio: 1;
-    margin-bottom: 1rem;
+    aspect-ratio: 1 / 1;
   }
 
   .skeleton-badge {
-    height: 24px;
-    width: 100px;
-    border-radius: 12px;
-    margin-bottom: 0.5rem;
+    width: 44%;
+    height: 1.25rem;
+    margin: 0.75rem 0.9rem 0.45rem;
+    border-radius: 999px;
   }
 
   .skeleton-title {
-    height: 20px;
-    width: 80%;
-    margin-bottom: 0.5rem;
+    width: 74%;
+    height: 0.95rem;
+    margin: 0 0.9rem 0.45rem;
   }
 
   .skeleton-price {
-    height: 24px;
-    width: 60%;
-    margin-bottom: 0.5rem;
+    width: 40%;
+    height: 1rem;
+    margin: 0 0.9rem 0.45rem;
   }
 
   .skeleton-reason {
-    height: 16px;
-    width: 90%;
-    margin-top: 0.5rem;
+    width: 80%;
+    height: 0.8rem;
+    margin: 0 0.9rem 1rem;
   }
 
-  @keyframes pulse {
+  @keyframes productRecPulse {
     to {
-      background-position-x: -200%;
+      background-position-x: -210%;
     }
   }
 
-  .product-recommendations__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-top: 1.5rem;
+  @media (max-width: 980px) {
+    .product-recommendations {
+      --rec-visible-cards: 3;
+      margin: 3rem 0;
+      padding: 1.45rem 1rem;
+    }
+
+    .product-recommendations__carousel {
+      padding-inline: 2rem;
+    }
+
+    .product-recommendations__arrow--prev {
+      left: 0;
+    }
+
+    .product-recommendations__arrow--next {
+      right: 0;
+    }
   }
 
-  .product-recommendations__grid--loading {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+  @media (max-width: 749px) {
+    .product-recommendations {
+      --rec-visible-cards: 1;
+      padding: 1.1rem 0.75rem 1.2rem;
+    }
+
+    .product-recommendations__title {
+      font-size: 1.25rem;
+    }
+
+    .product-recommendations__carousel {
+      padding-inline: 0;
+    }
+
+    .product-recommendations__arrow {
+      display: none !important;
+    }
+
+    .product-recommendations__track {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.9rem;
+      overflow: visible;
+      scroll-snap-type: none;
+      padding: 0.2rem 0;
+    }
+
+    .product-recommendations__track.is-balanced {
+      justify-content: initial;
+    }
+
+    .recommendation-card {
+      flex: none;
+      max-width: none;
+      width: 100%;
+      border-radius: 14px;
+    }
   }
 
-  .product-recommendations__grid--loading .skeleton-card {
-    flex: 0 0 250px;
-    min-width: 250px;
-  }
-
-  .recommendation-card {
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 1rem;
-    text-decoration: none;
-    color: inherit;
-    transition: transform 0.2s, box-shadow 0.2s;
-    display: block;
-  }
-
-  .recommendation-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  .recommendation-card__image {
-    width: 100%;
-    aspect-ratio: 1;
-    object-fit: cover;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-  }
-
-  .recommendation-card__title {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-  }
-
-  .recommendation-card__price {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #2c5f2d;
-    margin-bottom: 0.5rem;
-  }
-
-  .recommendation-card__badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    background-color: #e8f5e9;
-    color: #2e7d32;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-  }
-
-  .recommendation-card__reason {
-    font-size: 0.875rem;
-    color: #666;
-    margin-top: 0.5rem;
-  }
-
-  .product-recommendations__empty {
-    text-align: center;
-    padding: 2rem;
-    color: #666;
+  @media (min-width: 750px) and (max-width: 1320px) {
+    .product-recommendations {
+      --rec-visible-cards: 4;
+    }
   }
 </style>
 
 <script>
-(function() {
-  const DIRECT_APP_BASE = {{ shop.metafields.recommendations_app.api_url.value | json }};
-  const APP_PROXY_BASE = '/apps/recommendations';
+  (function () {
+    const DIRECT_APP_BASE = {{ shop.metafields.recommendations_app.api_url.value | json }};
+    const APP_PROXY_BASE = '/apps/recommendations';
+    const sectionId = {{ section.id | json }};
+    const root = document.getElementById(`product-recommendations-${sectionId}`);
 
-  function buildRecommendationsUrl(path) {
-    if (DIRECT_APP_BASE) {
-      const base = String(DIRECT_APP_BASE).replace(/\/$/, '');
-      return `${base}/api/recommendations${path}`;
+    if (!root) return;
+
+    const elements = {
+      loading: root.querySelector(`#recommendations-loading-${sectionId}`),
+      container: root.querySelector(`#recommendations-container-${sectionId}`),
+      track: root.querySelector(`#recommendations-track-${sectionId}`),
+      empty: root.querySelector(`#recommendations-empty-${sectionId}`),
+      prev: root.querySelector(`#recommendations-prev-${sectionId}`),
+      next: root.querySelector(`#recommendations-next-${sectionId}`)
+    };
+
+    function buildRecommendationsUrl(path) {
+      if (DIRECT_APP_BASE) {
+        const base = String(DIRECT_APP_BASE).replace(/\/$/, '');
+        return `${base}/api/recommendations${path}`;
+      }
+      return `${APP_PROXY_BASE}${path}`;
     }
-    return `${APP_PROXY_BASE}${path}`;
-  }
-  
-  async function loadRecommendations() {
-    try {
-      // Get current product data
-      const productData = {{ product | json }};
-      const selectedVariant = {{ product.selected_or_first_available_variant | json }};
-      const productOptions = Array.isArray(productData.options) ? productData.options : [];
-      
-      // Extract size from variant
-      let size = null;
-      if (Array.isArray(selectedVariant.options) && selectedVariant.options.length > 0) {
-        const sizeOptionIndex = productOptions.findIndex(optionName =>
-          String(optionName).toLowerCase().includes('size')
-        );
 
-        if (sizeOptionIndex >= 0 && selectedVariant.options[sizeOptionIndex]) {
-          size = selectedVariant.options[sizeOptionIndex];
-        } else if (selectedVariant.options.length === 1 && selectedVariant.options[0] !== 'Default Title') {
-          size = selectedVariant.options[0];
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatPriceRange(priceRange) {
+      const min = Number(priceRange && priceRange.min != null ? priceRange.min : 0);
+      const max = Number(priceRange && priceRange.max != null ? priceRange.max : min);
+      if (max > min) return `$${min.toFixed(2)} - $${max.toFixed(2)}`;
+      return `$${min.toFixed(2)}`;
+    }
+
+    function matchLabel(score) {
+      if (score >= 80) return 'Top Pick';
+      if (score >= 60) return 'Great Match';
+      return 'Similar';
+    }
+
+    function initCarousel(track, prevButton, nextButton) {
+      if (!track || !prevButton || !nextButton) {
+        return function noop() {};
+      }
+
+      const tolerance = 4;
+      let resizeObserver = null;
+
+      function readGap() {
+        const computedStyle = window.getComputedStyle(track);
+        const gapValue = parseFloat(computedStyle.columnGap || computedStyle.gap || '0');
+        return Number.isFinite(gapValue) ? gapValue : 0;
+      }
+
+      function getCardWidth() {
+        const card = track.querySelector('.recommendation-card, .skeleton-card');
+        return card ? card.getBoundingClientRect().width : 220;
+      }
+
+      function updateArrows() {
+        const isStackedLayout = window.matchMedia('(max-width: 749px)').matches;
+        if (isStackedLayout) {
+          track.classList.remove('is-balanced');
+          prevButton.hidden = true;
+          nextButton.hidden = true;
+          prevButton.disabled = true;
+          nextButton.disabled = true;
+          return;
         }
+
+        const hasOverflow = track.scrollWidth - track.clientWidth > tolerance;
+        track.classList.toggle('is-balanced', !hasOverflow);
+        prevButton.hidden = !hasOverflow;
+        nextButton.hidden = !hasOverflow;
+
+        if (!hasOverflow) {
+          track.scrollLeft = 0;
+          prevButton.disabled = true;
+          nextButton.disabled = true;
+          return;
+        }
+
+        prevButton.disabled = track.scrollLeft <= tolerance;
+        nextButton.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - tolerance;
       }
 
-      if (!size && selectedVariant.option1 && String(productOptions[0] || '').toLowerCase().includes('size')) {
-        size = selectedVariant.option1;
+      function scrollByStep(direction) {
+        const cardWidth = getCardWidth();
+        const gap = readGap();
+        const stepByCard = cardWidth + gap;
+        const visibleCards = Math.max(1, Math.floor((track.clientWidth + gap) / Math.max(stepByCard, 1)));
+        const step = stepByCard * Math.max(1, visibleCards - 1);
+        track.scrollBy({
+          left: direction * Math.max(step, stepByCard),
+          behavior: 'smooth'
+        });
       }
 
-      // Use variant title as fallback
-      if (!size && selectedVariant.title && selectedVariant.title !== 'Default Title') {
-        size = selectedVariant.title.split(' / ')[0];
+      prevButton.addEventListener('click', function () {
+        scrollByStep(-1);
+      });
+      nextButton.addEventListener('click', function () {
+        scrollByStep(1);
+      });
+
+      track.addEventListener(
+        'scroll',
+        function () {
+          window.requestAnimationFrame(updateArrows);
+        },
+        { passive: true }
+      );
+
+      track.addEventListener(
+        'load',
+        function () {
+          window.requestAnimationFrame(updateArrows);
+        },
+        true
+      );
+
+      window.addEventListener('resize', updateArrows);
+
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(updateArrows);
+        resizeObserver.observe(track);
       }
 
-      if (!size || !selectedVariant.price) {
-        document.getElementById('recommendations-loading').style.display = 'none';
-        document.getElementById('recommendations-empty').style.display = 'block';
+      window.requestAnimationFrame(updateArrows);
+
+      return function refreshCarousel() {
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+          resizeObserver.observe(track);
+        }
+        window.requestAnimationFrame(updateArrows);
+      };
+    }
+
+    const refreshCarousel = initCarousel(elements.track, elements.prev, elements.next);
+
+    async function loadRecommendations() {
+      try {
+        const productData = {{ product | json }};
+        const fallbackVariant = {{ product.selected_or_first_available_variant | json }};
+        const variantInput = root.ownerDocument.querySelector('[name="id"]');
+        const selectedVariantId = variantInput ? String(variantInput.value) : null;
+
+        const variants = Array.isArray(productData.variants) ? productData.variants : [];
+        const selectedVariant =
+          variants.find(function (variant) {
+            return String(variant.id) === selectedVariantId;
+          }) || fallbackVariant;
+
+        const productOptions = Array.isArray(productData.options) ? productData.options : [];
+
+        let size = null;
+        if (Array.isArray(selectedVariant.options) && selectedVariant.options.length > 0) {
+          const sizeOptionIndex = productOptions.findIndex(function (optionName) {
+            return String(optionName).toLowerCase().includes('size');
+          });
+
+          if (sizeOptionIndex >= 0 && selectedVariant.options[sizeOptionIndex]) {
+            size = selectedVariant.options[sizeOptionIndex];
+          } else if (selectedVariant.options.length === 1 && selectedVariant.options[0] !== 'Default Title') {
+            size = selectedVariant.options[0];
+          }
+        }
+
+        if (!size && selectedVariant.option1 && String(productOptions[0] || '').toLowerCase().includes('size')) {
+          size = selectedVariant.option1;
+        }
+
+        if (!size && selectedVariant.title && selectedVariant.title !== 'Default Title') {
+          size = selectedVariant.title.split(' / ')[0];
+        }
+
+        if (!selectedVariant.price) {
+          if (elements.loading) elements.loading.style.display = 'none';
+          if (elements.empty) elements.empty.style.display = 'block';
+          return;
+        }
+
+        const params = new URLSearchParams({
+          price: String(selectedVariant.price / 100)
+        });
+        if (size) params.set('size', size);
+
+        const requestUrl = buildRecommendationsUrl(`/product/${productData.id}?${params.toString()}`);
+        const response = await fetch(requestUrl);
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error('Recommendations request failed', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorBody
+          });
+          throw new Error(`Failed to fetch recommendations (${response.status})`);
+        }
+
+        const data = await response.json();
+        displayRecommendations(Array.isArray(data.recommendations) ? data.recommendations : []);
+      } catch (error) {
+        console.error('Recommendations error:', error);
+        if (elements.loading) elements.loading.style.display = 'none';
+        if (elements.empty) elements.empty.style.display = 'block';
+      }
+    }
+
+    function displayRecommendations(recommendations) {
+      if (!elements.track) return;
+
+      if (elements.loading) elements.loading.style.display = 'none';
+      if (!recommendations || recommendations.length === 0) {
+        if (elements.container) elements.container.style.display = 'none';
+        if (elements.empty) elements.empty.style.display = 'block';
+        elements.track.innerHTML = '';
+        refreshCarousel();
         return;
       }
 
-      const path = `/product/${productData.id}?size=${encodeURIComponent(size)}&price=${selectedVariant.price / 100}`;
-      const requestUrl = buildRecommendationsUrl(path);
+      if (elements.empty) elements.empty.style.display = 'none';
+      if (elements.container) elements.container.style.display = 'block';
 
-      const response = await fetch(requestUrl);
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error('Recommendations request failed', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorBody
-        });
-        throw new Error(`Failed to fetch recommendations (${response.status})`);
-      }
+      elements.track.innerHTML = recommendations
+        .map(function (product) {
+          const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
+          const badge = matchLabel(Number(product.relevanceScore || 0));
+          const title = escapeHtml(product.title);
+          const reason = product.reason ? `<p class="recommendation-card__reason">${escapeHtml(product.reason)}</p>` : '';
 
-      const data = await response.json();
-      displayRecommendations(data.recommendations);
+          return `
+            <a href="/products/${escapeHtml(product.handle)}" class="recommendation-card">
+              <div class="recommendation-card__image-wrap">
+                ${
+                  imageUrl
+                    ? `<img src="${escapeHtml(imageUrl)}" alt="${title}" class="recommendation-card__image" loading="lazy">`
+                    : '<span class="recommendation-card__placeholder" aria-hidden="true"></span>'
+                }
+                <span class="recommendation-card__badge">${badge}</span>
+              </div>
+              <div class="recommendation-card__body">
+                <h3 class="recommendation-card__title">${title}</h3>
+                <div class="recommendation-card__price">${formatPriceRange(product.priceRange)}</div>
+                ${reason}
+                <span class="recommendation-card__cta">View product</span>
+              </div>
+            </a>
+          `;
+        })
+        .join('');
 
-    } catch (error) {
-      console.error('Recommendations error:', error);
-      document.getElementById('recommendations-loading').style.display = 'none';
-      document.getElementById('recommendations-empty').style.display = 'block';
-    }
-  }
-
-  function displayRecommendations(recommendations) {
-    const loading = document.getElementById('recommendations-loading');
-    const container = document.getElementById('recommendations-container');
-    const grid = document.getElementById('recommendations-grid');
-    const empty = document.getElementById('recommendations-empty');
-
-    loading.style.display = 'none';
-
-    if (!recommendations || recommendations.length === 0) {
-      empty.style.display = 'block';
-      return;
+      refreshCarousel();
     }
 
-    container.style.display = 'block';
-    
-    grid.innerHTML = recommendations.map(product => {
-      const imageUrl = product.images && product.images[0] ? product.images[0].url : '';
-      const matchQuality = product.relevanceScore >= 80 ? 'Excellent Match' : 
-                          product.relevanceScore >= 60 ? 'Good Match' : 'Similar';
-      
-      return `
-        <a href="/products/${product.handle}" class="recommendation-card">
-          ${imageUrl ? `<img src="${imageUrl}" alt="${product.title}" class="recommendation-card__image" loading="lazy">` : ''}
-          <div class="recommendation-card__badge">${matchQuality}</div>
-          <h3 class="recommendation-card__title">${product.title}</h3>
-          <div class="recommendation-card__price">
-            $${product.priceRange.min.toFixed(2)}
-            ${product.priceRange.min !== product.priceRange.max ? ` - $${product.priceRange.max.toFixed(2)}` : ''}
-          </div>
-          ${product.reason ? `<p class="recommendation-card__reason">${product.reason}</p>` : ''}
-        </a>
-      `;
-    }).join('');
-  }
+    const variantInputs = root.ownerDocument.querySelectorAll('[name="id"]');
+    variantInputs.forEach(function (input) {
+      input.addEventListener('change', loadRecommendations);
+    });
 
-  // Update recommendations when variant changes
-  const variantSelects = document.querySelectorAll('[name="id"]');
-  variantSelects.forEach(select => {
-    select.addEventListener('change', loadRecommendations);
-  });
+    root.ownerDocument.addEventListener('variant:change', loadRecommendations);
 
-  // Load recommendations on page load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadRecommendations);
-  } else {
-    loadRecommendations();
-  }
-})();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadRecommendations);
+    } else {
+      loadRecommendations();
+    }
+  })();
 </script>
 
 {% schema %}

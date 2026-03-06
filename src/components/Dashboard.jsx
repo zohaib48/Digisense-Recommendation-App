@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Page,
   Layout,
@@ -6,94 +6,190 @@ import {
   Button,
   TextField,
   Banner,
-  DataTable,
-  Badge,
   Text,
   BlockStack,
   InlineStack,
-  Divider
+  Divider,
+  Form,
+  FormLayout,
+  ChoiceList,
+  Checkbox,
+  Spinner
 } from '@shopify/polaris';
+import { useAuthenticatedFetch } from '@shopify/app-bridge-react';
+
+const VALID_SIZE_MATCH_STYLES = new Set(['exact', 'exact_or_similar', 'none']);
+const DEFAULT_MAX_RECOMMENDATIONS = 8;
+
+function normalizeRecommendationLimit(value, fallback = DEFAULT_MAX_RECOMMENDATIONS) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(24, parsed));
+}
 
 function Dashboard() {
-  const [testProductId, setTestProductId] = useState('');
-  const [testSize, setTestSize] = useState('');
-  const [testPrice, setTestPrice] = useState('');
-  const [recommendations, setRecommendations] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const fetch = useAuthenticatedFetch();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const [reauthContext, setReauthContext] = useState({ shop: '', host: '' });
 
-  const handleTestRecommendations = useCallback(async () => {
-    if (!testProductId || !testSize || !testPrice) {
-      setError('Please fill in all fields');
+  const [settings, setSettings] = useState({
+    sizeMatchStyle: ['exact_or_similar'],
+    priceRangePercentage: '20',
+    filterByProductType: true,
+    filterByCategoryTags: false,
+    productPageMaxRecommendations: String(DEFAULT_MAX_RECOMMENDATIONS),
+    cartMaxRecommendations: String(DEFAULT_MAX_RECOMMENDATIONS),
+  });
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/settings');
+      if (response.status === 401) {
+        const params = new URLSearchParams(window.location.search);
+        const shop = params.get('shop');
+        const host = params.get('host');
+
+        if (shop) {
+          setReauthContext({ shop, host: host || '' });
+        }
+        setReauthRequired(true);
+        setLoading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Failed to load settings');
+      }
+
+      setReauthRequired(false);
+      const data = await response.json();
+      const s = data.settings || {};
+      const normalizedSizeMatchStyle = VALID_SIZE_MATCH_STYLES.has(s.sizeMatchStyle)
+        ? s.sizeMatchStyle
+        : 'exact_or_similar';
+      setSettings({
+        sizeMatchStyle: [normalizedSizeMatchStyle],
+        priceRangePercentage: String(s.priceRangePercentage || 20),
+        filterByProductType: s.filterByProductType ?? true,
+        filterByCategoryTags: s.filterByCategoryTags ?? false,
+        productPageMaxRecommendations: String(
+          normalizeRecommendationLimit(s.productPageMaxRecommendations, DEFAULT_MAX_RECOMMENDATIONS)
+        ),
+        cartMaxRecommendations: String(
+          normalizeRecommendationLimit(s.cartMaxRecommendations, DEFAULT_MAX_RECOMMENDATIONS)
+        ),
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetch]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleReauthenticate = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shop = reauthContext.shop || params.get('shop') || '';
+    const host = reauthContext.host || params.get('host') || '';
+
+    if (!shop) {
+      setError('Missing shop parameter. Please re-open the app from Shopify Admin.');
       return;
     }
 
-    setLoading(true);
+    const authParams = new URLSearchParams({ shop, embedded: '1' });
+    if (host) {
+      authParams.set('host', host);
+    }
+    const authUrl = `/auth?${authParams.toString()}`;
+
+    try {
+      if (window.top) {
+        window.top.location.href = authUrl;
+        return;
+      }
+    } catch (_error) {
+      // Fallback to same-frame navigation when top is inaccessible.
+    }
+
+    window.location.assign(authUrl);
+  }, [reauthContext]);
+
+  const handleSaveSettings = useCallback(async () => {
+    setSaving(true);
     setError(null);
     setSuccess(null);
-
     try {
-      const response = await fetch(
-        `/api/recommendations/product/${testProductId}?size=${testSize}&price=${testPrice}`
-      );
+      const selectedSizeStyle = settings.sizeMatchStyle[0];
+      const payload = {
+        sizeMatchStyle: VALID_SIZE_MATCH_STYLES.has(selectedSizeStyle) ? selectedSizeStyle : 'exact_or_similar',
+        priceRangePercentage: Number.parseFloat(settings.priceRangePercentage) || 20,
+        filterByProductType: settings.filterByProductType,
+        filterByCategoryTags: settings.filterByCategoryTags,
+        productPageMaxRecommendations: normalizeRecommendationLimit(settings.productPageMaxRecommendations),
+        cartMaxRecommendations: normalizeRecommendationLimit(settings.cartMaxRecommendations),
+      };
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch recommendations');
-      }
-
-      const data = await response.json();
-      setRecommendations(data.recommendations || []);
-      setSuccess(`Found ${data.recommendations?.length || 0} recommendations!`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [testProductId, testSize, testPrice]);
-
-  const handleClearCache = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/recommendations/cache', {
-        method: 'DELETE'
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: payload })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to clear cache');
-      }
+      if (!response.ok) throw new Error('Failed to save settings');
+      setSuccess('Settings saved successfully!');
 
-      setSuccess('Cache cleared successfully!');
+      // Clear recommendations cache so new settings apply
+      await fetch('/api/recommendations/cache', { method: 'DELETE' });
+
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  }, []);
+  }, [fetch, settings]);
 
-  const rows = recommendations.map(rec => [
-    rec.title,
-    rec.matchingVariants?.length || 0,
-    `$${rec.priceRange?.min.toFixed(2)} - $${rec.priceRange?.max.toFixed(2)}`,
-    rec.relevanceScore,
-    <Badge tone={rec.relevanceScore >= 80 ? 'success' : rec.relevanceScore >= 60 ? 'info' : 'warning'}>
-      {rec.relevanceScore >= 80 ? 'Excellent' : rec.relevanceScore >= 60 ? 'Good' : 'Fair'}
-    </Badge>,
-    rec.reason || 'Similar product'
-  ]);
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Spinner size="large" />
+      </div>
+    );
+  }
 
   return (
     <Page
-      title="Product Recommendations"
-      subtitle="Configure and test your smart recommendation system"
+      title="Recommendation Settings"
+      subtitle="Configure how products are recommended to your customers"
     >
       <Layout>
         {error && (
           <Layout.Section>
             <Banner status="critical" onDismiss={() => setError(null)}>
               <p>{error}</p>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {reauthRequired && (
+          <Layout.Section>
+            <Banner status="warning">
+              <p>Session expired after uninstall/reinstall. Click below to re-authenticate; product sync starts automatically after auth callback.</p>
+              <div style={{ marginTop: '12px' }}>
+                <Button primary onClick={handleReauthenticate}>
+                  Re-authenticate & Sync
+                </Button>
+              </div>
             </Banner>
           </Layout.Section>
         )}
@@ -110,166 +206,111 @@ function Dashboard() {
           <Card>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2">
-                How It Works
+                Filtering Criteria
               </Text>
               <Text as="p" color="subdued">
-                This app automatically shows customers similar products based on:
+                Adjust how the recommendation engine matches similar products for your store.
               </Text>
-              <ul style={{ marginLeft: '20px', color: 'var(--p-color-text-subdued)' }}>
-                <li>Selected size (exact or similar)</li>
-                <li>Price range (±20% by default)</li>
-                <li>Product type and category</li>
-              </ul>
+
               <Divider />
-              <Text variant="headingMd" as="h2">
-                Features
-              </Text>
-              <InlineStack gap="200">
-                <Badge>Product Page Recommendations</Badge>
-                <Badge>Cart Recommendations</Badge>
-                <Badge>Smart Filtering</Badge>
-                <Badge>Cached Results</Badge>
-              </InlineStack>
+
+              <Form onSubmit={handleSaveSettings}>
+                <FormLayout>
+                  <ChoiceList
+                    title="Selected Size Match"
+                    choices={[
+                      {
+                        label: 'Exact Match Only',
+                        value: 'exact',
+                        helpText: 'Only exact values match. Example: target "M" matches only "M".'
+                      },
+                      {
+                        label: 'Exact or Similar',
+                        value: 'exact_or_similar',
+                        helpText: 'Exact plus partial/inclusive values. Example: "M" can match "M", "M/L", or "M (38-40)".'
+                      },
+                      {
+                        label: 'No Size Filter',
+                        value: 'none',
+                        helpText: 'Ignore size completely. Example: recommend by price (and optional type/tags) even when sizes differ.'
+                      },
+                    ]}
+                    selected={settings.sizeMatchStyle}
+                    onChange={(val) => setSettings({ ...settings, sizeMatchStyle: val })}
+                  />
+                  <Text as="p" color="subdued">
+                    Tip: use `No Size Filter` for one-size catalogs, products without size variants, or when price similarity matters more than size.
+                  </Text>
+
+                  <TextField
+                    label="Price Range (± %)"
+                    type="number"
+                    value={settings.priceRangePercentage}
+                    onChange={(val) => setSettings({ ...settings, priceRangePercentage: val })}
+                    helpText="Target price range for recommended products compared to the current product/cart item."
+                    min={0}
+                    max={100}
+                    suffix="%"
+                  />
+
+                  <TextField
+                    label="Product Page Recommendations Count"
+                    type="number"
+                    value={settings.productPageMaxRecommendations}
+                    onChange={(val) => setSettings({ ...settings, productPageMaxRecommendations: val })}
+                    helpText='How many products to show on product page widget. Example: 4 = show up to 4 recommendations.'
+                    min={1}
+                    max={24}
+                  />
+
+                  <TextField
+                    label="Cart Recommendations Count"
+                    type="number"
+                    value={settings.cartMaxRecommendations}
+                    onChange={(val) => setSettings({ ...settings, cartMaxRecommendations: val })}
+                    helpText='How many products to show in cart recommendations. Example: 8 = show up to 8 products.'
+                    min={1}
+                    max={24}
+                  />
+
+                  <Checkbox
+                    label="Filter by Product Type"
+                    helpText="Only recommend items that share same Product Type."
+                    checked={settings.filterByProductType}
+                    onChange={(val) => setSettings({ ...settings, filterByProductType: val })}
+                  />
+
+                  <Checkbox
+                    label="Filter by Category/Tags"
+                    helpText="Only recommend items that share the same product tags."
+                    checked={settings.filterByCategoryTags}
+                    onChange={(val) => setSettings({ ...settings, filterByCategoryTags: val })}
+                  />
+
+                  <InlineStack align="end">
+                    <Button primary submit loading={saving}>
+                      Save Settings
+                    </Button>
+                  </InlineStack>
+                </FormLayout>
+              </Form>
+
             </BlockStack>
           </Card>
         </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">
-                Test Recommendations
-              </Text>
-              <Text as="p" color="subdued">
-                Enter product details to test the recommendation engine
-              </Text>
-
-              <TextField
-                label="Product ID"
-                value={testProductId}
-                onChange={setTestProductId}
-                placeholder="e.g., 7234567890123 or gid://shopify/Product/7234567890123"
-                helpText="Enter the numeric product ID or full GID"
-              />
-
-              <TextField
-                label="Size"
-                value={testSize}
-                onChange={setTestSize}
-                placeholder="e.g., M, Large, XL"
-                helpText="Size to match against"
-              />
-
-              <TextField
-                label="Price"
-                value={testPrice}
-                onChange={setTestPrice}
-                type="number"
-                placeholder="e.g., 29.99"
-                prefix="$"
-                helpText="Target price for recommendations"
-              />
-
-              <InlineStack gap="200">
-                <Button
-                  primary
-                  onClick={handleTestRecommendations}
-                  loading={loading}
-                >
-                  Get Recommendations
-                </Button>
-                <Button onClick={handleClearCache} loading={loading}>
-                  Clear Cache
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        {recommendations.length > 0 && (
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text variant="headingMd" as="h2">
-                  Recommendations ({recommendations.length})
-                </Text>
-                <DataTable
-                  columnContentTypes={['text', 'numeric', 'text', 'numeric', 'text', 'text']}
-                  headings={[
-                    'Product',
-                    'Variants',
-                    'Price Range',
-                    'Score',
-                    'Match Quality',
-                    'Reason'
-                  ]}
-                  rows={rows}
-                />
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        )}
 
         <Layout.Section secondary>
           <Card>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2">
-                Configuration
+                Need Help?
               </Text>
               <Text as="p" color="subdued">
-                Customize recommendation behavior
+                These settings are used to dynamically filter recommendations on the Product and Cart widgets.
               </Text>
-              <Divider />
-              <div>
-                <Text as="p" fontWeight="semibold">Price Range: ±20%</Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Products within this range will be shown
-                </Text>
-              </div>
-              <div>
-                <Text as="p" fontWeight="semibold">Max Results: 8</Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Maximum recommendations to display
-                </Text>
-              </div>
-              <div>
-                <Text as="p" fontWeight="semibold">Cache TTL: 5 minutes</Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Results cached for faster loading
-                </Text>
-              </div>
-            </BlockStack>
-          </Card>
-
-          <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">
-                API Endpoints
+              <Text as="p" color="subdued">
+                Higher price range percentages usually result in more recommendations but may be less accurate.
               </Text>
-              <div>
-                <Text as="p" fontWeight="semibold" variant="bodySm">
-                  GET /api/recommendations/product/:id
-                </Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Get recommendations for a product
-                </Text>
-              </div>
-              <div>
-                <Text as="p" fontWeight="semibold" variant="bodySm">
-                  POST /api/recommendations/cart
-                </Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Get recommendations for cart items
-                </Text>
-              </div>
-              <div>
-                <Text as="p" fontWeight="semibold" variant="bodySm">
-                  GET /api/recommendations/similar/:id
-                </Text>
-                <Text as="p" color="subdued" variant="bodySm">
-                  Get similar products by tags
-                </Text>
-              </div>
             </BlockStack>
           </Card>
         </Layout.Section>

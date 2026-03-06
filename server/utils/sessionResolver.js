@@ -13,6 +13,10 @@ const SESSION_FILE = path.join(__dirname, '..', '..', '.session-dev.json');
  * 2) Fallback to persisted dev session file.
  */
 export async function resolveSessionValidation() {
+  if (global.sessionRevoked) {
+    return { session: null, valid: false, reason: 'unauthorized', missingScopes: [] };
+  }
+
   const activeValidation = validateSession(global.activeSession);
   if (activeValidation.valid) {
     return activeValidation;
@@ -37,4 +41,3 @@ export async function resolveSessionValidation() {
     return activeValidation;
   }
 }
-

@@ -11,6 +11,7 @@
     "dev:client": "vite",
     "start": "node server/index.js",
     "launch": "node launch.js",
+    "db:migrate": "node server/db/migrate.js",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -32,6 +33,7 @@
     "express": "^4.18.2",
     "graphql": "^16.8.1",
     "node-cache": "^5.1.2",
+    "pg": "^8.18.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

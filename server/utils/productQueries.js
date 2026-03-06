@@ -72,8 +72,12 @@ const PRODUCT_QUERY = `
  * GraphQL query to get multiple products with filters
  */
 const PRODUCTS_QUERY = `
-  query getProducts($first: Int!, $query: String) {
-    products(first: $first, query: $query) {
+  query getProducts($first: Int!, $query: String, $after: String) {
+    products(first: $first, query: $query, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       edges {
         node {
           id
@@ -166,7 +170,7 @@ export async function getProductsByFilters(client, filters = {}) {
       productType,
       tags,
       excludeProductId,
-      limit = 50
+      limit
     } = filters;
 
     // Build query string
@@ -184,12 +188,41 @@ export async function getProductsByFilters(client, filters = {}) {
 
     const queryString = queryParts.length > 0 ? queryParts.join(' AND ') : '';
 
-    const data = await executeQuery(client, PRODUCTS_QUERY, {
-      first: limit,
-      query: queryString || undefined
-    });
+    // If caller does not provide a limit, fetch multiple pages so recommendations
+    // don't silently miss products beyond the first page.
+    const parsedLimit = Number.parseInt(limit, 10);
+    const hasExplicitLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+    const configuredDefaultLimit = Number.parseInt(process.env.PRODUCT_FETCH_LIMIT || '500', 10);
+    const effectiveLimit = hasExplicitLimit
+      ? parsedLimit
+      : (Number.isFinite(configuredDefaultLimit) && configuredDefaultLimit > 0 ? configuredDefaultLimit : 500);
 
-    let products = data.products.edges.map(edge => formatProduct(edge.node));
+    let after = null;
+    let hasNextPage = true;
+    let products = [];
+
+    while (hasNextPage && products.length < effectiveLimit) {
+      const remaining = effectiveLimit - products.length;
+      const first = Math.min(250, remaining);
+
+      const data = await executeQuery(client, PRODUCTS_QUERY, {
+        first,
+        query: queryString || undefined,
+        after
+      });
+
+      const page = data?.products;
+      const edges = page?.edges || [];
+
+      products.push(...edges.map(edge => formatProduct(edge.node)));
+
+      hasNextPage = Boolean(page?.pageInfo?.hasNextPage);
+      after = page?.pageInfo?.endCursor || null;
+
+      if (edges.length === 0) {
+        break;
+      }
+    }
 
     // Filter out excluded products
     if (excludeProductId) {

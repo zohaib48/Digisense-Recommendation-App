@@ -57,6 +57,9 @@ export async function executeQuery(client, query, variables = {}) {
       if (!error.message?.includes('Session expired')) {
         error.message = 'Session expired or unauthorized. Please re-authenticate the app from Shopify Admin.';
       }
+      // Mark current in-memory session as revoked so routes stop trusting it.
+      global.activeSession = null;
+      global.sessionRevoked = true;
     }
 
     if (error.code === 403 || error.response?.code === 403) {

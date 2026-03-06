@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "skills": {
+    "shopify-apps": {
+      "source": "omer-metin/skills-for-antigravity",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/omer-metin/skills-for-antigravity.git",
+      "skillPath": "skills/shopify-apps/SKILL.md",
+      "skillFolderHash": "b59b91b149b61e672d4bb0f927845c9c1b71de27",
+      "installedAt": "2026-03-06T06:58:35.179Z",
+      "updatedAt": "2026-03-06T06:59:17.894Z"
+    }
+  },
+  "dismissed": {}
+}
